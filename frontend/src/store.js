@@ -157,6 +157,17 @@ export function setRequiredDocs(clientId, docs) {
   saveDossier(clientId, dossier)
 }
 
+// ── Questions personnalisées du copilote (globales, gérées par le consultant) ─
+
+export function getCustomQuestions() {
+  try { return JSON.parse(localStorage.getItem('cir_custom_questions') || '[]') }
+  catch { return [] }
+}
+
+export function saveCustomQuestions(questions) {
+  localStorage.setItem('cir_custom_questions', JSON.stringify(questions))
+}
+
 // ── Jumeau documentaire ───────────────────────────────────────────────────────
 
 export function getJumeau(clientId) {

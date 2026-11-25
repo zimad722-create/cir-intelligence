@@ -17,10 +17,13 @@ import {
   getJumeau,
   getAlertes,
   updateAlerteStatus,
+  getCustomQuestions,
+  saveCustomQuestions,
 } from '../store'
 import TwinMap from '../components/TwinMap'
 import { generateFullReport, buildReportData } from '../services/reportGenerator'
 import { buildTwin, checkRules } from '../services/twinBuilder'
+import { FIXED_QUESTIONS } from '../services/groq'
 
 // -- Demo data -----------------------------------------------------------------
 
@@ -229,6 +232,8 @@ function DossierView({ navigate, client, onBack }) {
   const [tab, setTab]                     = useState('documents')
   const [rules, setRules]                 = useState(DEFAULT_RULES)
   const [newRule, setNewRule]             = useState('')
+  const [customQuestions, setCustomQuestions] = useState(() => getCustomQuestions())
+  const [newQuestion, setNewQuestion]     = useState('')
   const [alerts, setAlerts]               = useState([])
   const [expandedAlert, setExpandedAlert] = useState(null)
   const [selectedDoc, setSelectedDoc]     = useState(null)
@@ -295,6 +300,20 @@ function DossierView({ navigate, client, onBack }) {
   }
   function deleteRule(id) {
     setRules(prev => prev.filter(r => r.id !== id))
+  }
+
+  // -- Questions copilote --
+  function addQuestion() {
+    if (!newQuestion.trim()) return
+    const updated = [...customQuestions, { id: Date.now(), text: newQuestion.trim() }]
+    setCustomQuestions(updated)
+    saveCustomQuestions(updated.map(q => q.text))
+    setNewQuestion('')
+  }
+  function deleteQuestion(id) {
+    const updated = customQuestions.filter(q => q.id !== id)
+    setCustomQuestions(updated)
+    saveCustomQuestions(updated.map(q => q.text))
   }
 
   // -- Alerts --
@@ -891,6 +910,68 @@ function DossierView({ navigate, client, onBack }) {
                   className="flex items-center gap-2 px-4 py-2.5 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-xl text-sm font-medium transition-colors">
                   <Plus size={16} /> Ajouter
                 </button>
+              </div>
+            </div>
+
+            {/* ── Questions personnalisées du copilote ── */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-white/10">
+                <span className="text-white font-semibold">Questions du copilote</span>
+                <p className="text-white/40 text-xs mt-0.5">Ces questions sont posées à tous les clients lors de la déclaration initiale</p>
+              </div>
+
+              {/* Questions fixes */}
+              <div className="divide-y divide-white/5">
+                <div className="px-4 py-2 bg-white/[0.02]">
+                  <p className="text-white/30 text-xs uppercase tracking-wide font-medium">Questions standards (non modifiables)</p>
+                </div>
+                {FIXED_QUESTIONS.map((q, i) => (
+                  <div key={i} className="flex items-center gap-3 px-6 py-3">
+                    <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                      <span className="text-white/40 text-[10px] font-bold">{i + 1}</span>
+                    </div>
+                    <span className="text-white/50 text-sm flex-1">{q}</span>
+                    <span className="text-white/20 text-xs">Fixe</span>
+                  </div>
+                ))}
+
+                {/* Questions personnalisées */}
+                {customQuestions.length > 0 && (
+                  <>
+                    <div className="px-4 py-2 bg-[#00b4d8]/5">
+                      <p className="text-[#00b4d8]/60 text-xs uppercase tracking-wide font-medium">Questions ajoutées par le consultant</p>
+                    </div>
+                    {customQuestions.map((q, i) => (
+                      <div key={q.id} className="flex items-center gap-3 px-6 py-3 bg-[#00b4d8]/3">
+                        <div className="w-5 h-5 rounded-full bg-[#00b4d8]/20 flex items-center justify-center shrink-0">
+                          <span className="text-[#00b4d8] text-[10px] font-bold">{FIXED_QUESTIONS.length + i + 1}</span>
+                        </div>
+                        <span className="text-white/70 text-sm flex-1">{q.text}</span>
+                        <button onClick={() => deleteQuestion(q.id)} className="text-white/20 hover:text-red-400 transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+
+              {/* Ajouter une question */}
+              <div className="px-6 py-4 border-t border-white/10 space-y-2">
+                <p className="text-white/40 text-xs">Exemple : "Avez-vous reçu des subventions publiques ?" ou "Le projet a-t-il fait l'objet d'un dépôt de brevet ?"</p>
+                <div className="flex gap-3">
+                  <input
+                    value={newQuestion}
+                    onChange={e => setNewQuestion(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addQuestion()}
+                    placeholder="Ajouter une question pour le copilote…"
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/25 text-sm outline-none focus:border-[#00b4d8]/50"
+                  />
+                  <button onClick={addQuestion}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-xl text-sm font-medium transition-colors">
+                    <Plus size={16} /> Ajouter
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -1,16 +1,25 @@
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const API_KEY      = import.meta.env.VITE_GROQ_API_KEY
 
-// Prompt système : le copilote CIR
-const SYSTEM_PROMPT = `Tu es un copilote CIR (Crédit d'Impôt Recherche) pour LEYTON, un cabinet de conseil fiscal.
+// Questions fixes du copilote
+const FIXED_QUESTIONS = [
+  'Le nom du projet R&D',
+  'La période exacte des travaux (mois/année début — mois/année fin)',
+  'Les membres de l\'équipe impliqués (prénom, nom, fonction)',
+  'Les prestataires externes éventuels (nom de la société, nature de la prestation)',
+  'Une description courte des travaux R&D réalisés (2-3 phrases)',
+]
+
+// Construit le prompt système en injectant les questions personnalisées
+function buildSystemPrompt(customQuestions = []) {
+  const allQuestions = [...FIXED_QUESTIONS, ...customQuestions]
+  const questionsList = allQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')
+
+  return `Tu es un copilote CIR (Crédit d'Impôt Recherche) pour LEYTON, un cabinet de conseil fiscal.
 Tu aides le client à décrire son projet de R&D avant qu'il dépose ses documents justificatifs.
 
 Ton objectif est de collecter les informations suivantes en posant une ou deux questions à la fois :
-1. Le nom du projet R&D
-2. La période exacte des travaux (mois/année début — mois/année fin)
-3. Les membres de l'équipe impliqués (prénom, nom, fonction)
-4. Les prestataires externes éventuels (nom de la société, nature de la prestation)
-5. Une description courte des travaux R&D réalisés (2-3 phrases)
+${questionsList}
 
 Règles importantes :
 - Pose une ou deux questions maximum par message, jamais tout d'un coup
@@ -24,6 +33,7 @@ Période: [mois/année début] – [mois/année fin]
 Équipe: [Prénom Nom (Fonction), ...]
 Prestataires: [Nom société (prestation), ...] ou Aucun
 Description: [2-3 phrases]
+${customQuestions.length > 0 ? customQuestions.map(q => `${q.split(' ')[0]}: [réponse]`).join('\n') : ''}
 ---FIN_FICHE---
 
 Après la fiche, demande : "Ces informations sont-elles correctes ? Vous pouvez confirmer ou me demander de corriger un point."
@@ -47,13 +57,15 @@ La liste des documents doit être personnalisée selon la fiche :
 - Si subventions mentionnées : Justificatif de subvention
 Adapte les noms des documents aux noms réels du projet et des personnes mentionnées dans la fiche.
 Réponds toujours en français.`
+}
 
 /**
  * Envoie l'historique de messages à Groq et retourne la réponse
  * @param {Array<{role: string, content: string}>} history
+ * @param {string[]} customQuestions - questions ajoutées par le consultant
  * @returns {Promise<string>}
  */
-export async function chatWithCopilot(history) {
+export async function chatWithCopilot(history, customQuestions = []) {
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
     headers: {
@@ -63,7 +75,7 @@ export async function chatWithCopilot(history) {
     body: JSON.stringify({
       model: 'qwen/qwen3.8-27b',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: buildSystemPrompt(customQuestions) },
         ...history,
       ],
       temperature: 0.4,
@@ -79,6 +91,8 @@ export async function chatWithCopilot(history) {
   const data = await response.json()
   return data.choices[0].message.content
 }
+
+export { FIXED_QUESTIONS }
 
 /**
  * Extrait la liste des documents requis depuis la réponse de confirmation

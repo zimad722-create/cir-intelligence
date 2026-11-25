@@ -24,6 +24,7 @@ import {
 import { chatWithCopilot, extractFiche, extractDocumentsList } from '../services/groq'
 import { extractText, analyzeDocument } from '../services/fileAnalyzer'
 import { buildTwin, checkRules } from '../services/twinBuilder'
+import { getCustomQuestions } from '../store'
 
 const STEPS = ['Copilote', 'Dépôt des documents', 'Suivi']
 
@@ -163,7 +164,8 @@ export default function ClientSpace() {
         content: m.text,
       }))
 
-      const reply = await chatWithCopilot(history)
+      const customQuestions = getCustomQuestions()
+      const reply = await chatWithCopilot(history, customQuestions)
 
       if (reply.includes('FICHE_CONFIRMÉE')) {
         saveFicheContexte(clientId, ficheEnAttente)
