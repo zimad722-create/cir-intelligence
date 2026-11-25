@@ -626,6 +626,7 @@ function DossierView({ navigate, client, onBack }) {
         {[
           { key: 'documents', label: 'Documents déposés' },
           { key: 'rules',     label: 'Règles de cohérence' },
+          { key: 'copilote',  label: 'Questions copilote' },
           { key: 'report',    label: 'Rapport & Grille' },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -913,14 +914,17 @@ function DossierView({ navigate, client, onBack }) {
               </div>
             </div>
 
-            {/* ── Questions personnalisées du copilote ── */}
+          </div>
+        )}
+
+        {/* == TAB : Questions copilote == */}
+        {tab === 'copilote' && (
+          <div className="space-y-6">
             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
               <div className="px-6 py-4 border-b border-white/10">
                 <span className="text-white font-semibold">Questions du copilote</span>
                 <p className="text-white/40 text-xs mt-0.5">Ces questions sont posées à tous les clients lors de la déclaration initiale</p>
               </div>
-
-              {/* Questions fixes */}
               <div className="divide-y divide-white/5">
                 <div className="px-4 py-2 bg-white/[0.02]">
                   <p className="text-white/30 text-xs uppercase tracking-wide font-medium">Questions standards (non modifiables)</p>
@@ -934,8 +938,6 @@ function DossierView({ navigate, client, onBack }) {
                     <span className="text-white/20 text-xs">Fixe</span>
                   </div>
                 ))}
-
-                {/* Questions personnalisées */}
                 {customQuestions.length > 0 && (
                   <>
                     <div className="px-4 py-2 bg-[#00b4d8]/5">
@@ -955,8 +957,6 @@ function DossierView({ navigate, client, onBack }) {
                   </>
                 )}
               </div>
-
-              {/* Ajouter une question */}
               <div className="px-6 py-4 border-t border-white/10 space-y-2">
                 <p className="text-white/40 text-xs">Exemple : "Avez-vous reçu des subventions publiques ?" ou "Le projet a-t-il fait l'objet d'un dépôt de brevet ?"</p>
                 <div className="flex gap-3">
