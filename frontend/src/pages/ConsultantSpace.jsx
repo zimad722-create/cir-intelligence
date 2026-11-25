@@ -85,7 +85,7 @@ export default function ConsultantSpace() {
   // -- KPIs --
   const totalClients = clients.length
   const withFiche    = clients.filter(c => getFicheContexte(c.id) !== null).length
-  const totalAlerts  = 3 // fixed demo value
+  const totalAlerts  = clients.reduce((sum, c) => sum + (getAlertes(c.id)?.filter(a => a.status === 'open').length || 0), 0)
 
   if (view === 'list') {
     return (
@@ -147,7 +147,7 @@ function ListView({ navigate, clients, totalClients, withFiche, totalAlerts, onO
           </div>
           <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-2xl px-5 py-4 text-center">
             <p className="text-3xl font-bold text-yellow-400">{totalAlerts}</p>
-            <p className="text-white/40 text-sm mt-1">Alertes (démo)</p>
+            <p className="text-white/40 text-sm mt-1">Alertes ouvertes</p>
           </div>
         </div>
 
