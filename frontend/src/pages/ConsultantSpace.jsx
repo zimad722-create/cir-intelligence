@@ -195,7 +195,12 @@ function ListView({ navigate, clients, totalClients, withFiche, totalAlerts, onO
                         </td>
                         <td className="px-5 py-3 text-white/60">{docs.length}</td>
                         <td className="px-5 py-3">
-                          <span className="text-yellow-400 text-xs font-semibold">3</span>
+                          {(() => {
+                            const nb = getAlertes(c.id)?.filter(a => a.status === 'open').length || 0
+                            return nb > 0
+                              ? <span className="text-yellow-400 text-xs font-semibold">{nb}</span>
+                              : <span className="text-white/20 text-xs">—</span>
+                          })()}
                         </td>
                         <td className="px-5 py-3">
                           <button
