@@ -14,7 +14,6 @@ import {
   getRequiredDocs,
   addMessage,
   setRequiredDocs,
-  getJumeau,
   getAlertes,
   updateAlerteStatus,
   getCustomQuestions,
@@ -241,10 +240,18 @@ function DossierView({ navigate, client, onBack }) {
     function refresh() {
       setFicheContexte(getFicheContexte(client.id))
       const stored = getDocuments(client.id)
-      setDocuments(stored.length > 0 ? stored : [])
+      const docs = stored.length > 0 ? stored : []
+      setDocuments(docs)
       setLocalRequiredDocs(getRequiredDocs(client.id))
-      const j = getJumeau(client.id)
-      setJumeau(j)
+      // Reconstruire le jumeau dynamiquement depuis les documents courants
+      // (ne pas se fier au jumeau stocké qui peut être obsolète)
+      if (docs.length > 0) {
+        const fiche = getFicheContexte(client.id)
+        const j = buildTwin(docs, fiche)
+        setJumeau(j)
+      } else {
+        setJumeau(null)
+      }
       const a = getAlertes(client.id)
       if (a && a.length > 0) setAlerts(a)
     }

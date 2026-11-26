@@ -108,10 +108,14 @@ export function buildTwin(documents, fiche) {
   const liens  = []
 
   // Périmètre : inclure tous les docs dont l'extraction a réussi
-  // = pas d'image/scan (manualReview) ET pas d'échec total (fields_summary non vide ou score > 0)
+  // = pas d'image/scan (manualReview) ET contenu extrait présent (fields_summary ou fields non vide)
   const extractedDocs = documents.filter(d =>
     !d.manualReview &&
-    (d.score ?? 0) > 0
+    d.status === 'analysé' &&
+    (
+      (d.fields_summary && d.fields_summary !== 'Extraction échouée' && d.fields_summary !== 'Analyse manuelle requise') ||
+      (d.fields && d.fields !== 'Extraction échouée' && d.fields !== 'Analyse manuelle requise')
+    )
   )
 
   if (extractedDocs.length === 0) return { noeuds: [], liens: [] }

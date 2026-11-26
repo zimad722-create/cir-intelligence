@@ -144,19 +144,22 @@ function EdgeLine({ from, to, label, lateral, positions }) {
   const pTo   = positions[to]
   if (!pFrom || !pTo) return null
 
-  const mx = (pFrom.x + pTo.x) / 2
-  const my = (pFrom.y + pTo.y) / 2
+  // Pour les liens vers le centre : placer le label à 35% du chemin depuis le doc (pas au milieu)
+  // Pour les liens latéraux : placer au milieu
+  const t  = lateral ? 0.5 : 0.38
+  const lx = pFrom.x + (pTo.x - pFrom.x) * t
+  const ly = pFrom.y + (pTo.y - pFrom.y) * t
 
-  const color  = lateral ? '#6366f1' : '#94a3b8'
-  const dashes = lateral ? '5 3' : 'none'
-  const width  = lateral ? 1.2 : 1.5
-  const opacity = lateral ? 0.7 : 0.6
+  const color   = lateral ? '#6366f1' : '#64748b'
+  const dashes  = lateral ? '5 3' : 'none'
+  const width   = lateral ? 1.2 : 1.4
+  const opacity = lateral ? 0.65 : 0.55
 
-  // Couper le label sur deux lignes si contient \n
-  const lines = label ? label.split('\n') : []
-  const maxLen = Math.max(...lines.map(l => l.length), 0)
-  const boxW   = Math.min(Math.max(maxLen * 5.5 + 12, 60), 130)
-  const boxH   = lines.length > 1 ? 26 : 16
+  // Couper le label en lignes (séparateur \n)
+  const lines = label ? label.split('\n').filter(Boolean) : []
+  const maxLen = lines.length > 0 ? Math.max(...lines.map(l => l.length)) : 0
+  const boxW   = Math.min(Math.max(maxLen * 5.2 + 14, 56), 140)
+  const boxH   = lines.length > 1 ? 28 : 17
 
   return (
     <g>
@@ -171,24 +174,25 @@ function EdgeLine({ from, to, label, lateral, positions }) {
       {lines.length > 0 && (
         <g>
           <rect
-            x={mx - boxW / 2} y={my - boxH / 2}
+            x={lx - boxW / 2} y={ly - boxH / 2}
             width={boxW} height={boxH}
             rx={4} fill="white"
-            stroke={lateral ? '#c7d2fe' : '#e2e8f0'}
+            stroke={lateral ? '#c7d2fe' : '#cbd5e1'}
             strokeWidth={0.8}
-            opacity={0.95}
+            opacity={0.97}
           />
           {lines.map((line, i) => (
             <text
               key={i}
-              x={mx} y={my - boxH / 2 + 10 + i * 12}
+              x={lx}
+              y={ly - boxH / 2 + 11 + i * 13}
               textAnchor="middle"
               fontSize={7.5}
-              fill={lateral ? '#4f46e5' : '#64748b'}
+              fill={lateral ? '#4f46e5' : '#475569'}
               fontFamily="system-ui, sans-serif"
-              fontWeight={lateral ? '500' : '400'}
+              fontWeight={lateral ? '500' : '500'}
             >
-              {line}
+              {line.length > 20 ? line.slice(0, 19) + '…' : line}
             </text>
           ))}
         </g>
