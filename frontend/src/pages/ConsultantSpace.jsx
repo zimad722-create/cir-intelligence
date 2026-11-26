@@ -139,18 +139,10 @@ function ListView({ navigate, clients, totalClients, withFiche, totalAlerts, onO
       <main className="flex-1 px-8 py-8 max-w-6xl mx-auto w-full space-y-6">
 
         {/* KPIs */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 max-w-xs">
           <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-center">
             <p className="text-3xl font-bold text-white">{totalClients}</p>
             <p className="text-white/40 text-sm mt-1">Clients inscrits</p>
-          </div>
-          <div className="bg-[#00b4d8]/5 border border-[#00b4d8]/20 rounded-2xl px-5 py-4 text-center">
-            <p className="text-3xl font-bold text-[#00b4d8]">{withFiche}</p>
-            <p className="text-white/40 text-sm mt-1">Fiches confirmées</p>
-          </div>
-          <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-2xl px-5 py-4 text-center">
-            <p className="text-3xl font-bold text-yellow-400">{totalAlerts}</p>
-            <p className="text-white/40 text-sm mt-1">Alertes ouvertes</p>
           </div>
         </div>
 
@@ -170,7 +162,7 @@ function ListView({ navigate, clients, totalClients, withFiche, totalAlerts, onO
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/5">
-                    {['Nom complet', 'Email', 'Inscrit le', 'Étape', 'Fiche', 'Docs', 'Alertes', ''].map(h => (
+                    {['Nom complet', 'Email', 'Inscrit le', 'Étape', 'Docs', ''].map(h => (
                       <th key={h} className="text-left px-5 py-3 text-white/30 font-medium text-xs uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
@@ -190,21 +182,7 @@ function ListView({ navigate, clients, totalClients, withFiche, totalAlerts, onO
                             {STEP_LABELS[step]}
                           </span>
                         </td>
-                        <td className="px-5 py-3">
-                          {fiche
-                            ? <CheckCircle size={15} className="text-green-400" />
-                            : <span className="text-white/20">—</span>
-                          }
-                        </td>
                         <td className="px-5 py-3 text-white/60">{docs.length}</td>
-                        <td className="px-5 py-3">
-                          {(() => {
-                            const nb = getAlertes(c.id)?.filter(a => a.status === 'open').length || 0
-                            return nb > 0
-                              ? <span className="text-yellow-400 text-xs font-semibold">{nb}</span>
-                              : <span className="text-white/20 text-xs">—</span>
-                          })()}
-                        </td>
                         <td className="px-5 py-3">
                           <button
                             onClick={() => onOpen(c)}
