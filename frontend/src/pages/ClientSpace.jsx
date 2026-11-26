@@ -261,12 +261,14 @@ export default function ClientSpace() {
       current = current.map((x, idx) =>
         idx === i ? {
           ...x,
-          status: 'analysé',
-          type:   result.type,
-          fields: result.fields,
-          score:  result.score,
-          anomalie: result.anomalie,
-          manualReview: result.manualReview || false,
+          status:        'analysé',
+          type:          result.type,
+          fields:        result.fields,
+          fields_summary: result.fields_summary,
+          entites:       result.entites || {},
+          score:         result.score,
+          anomalie:      result.anomalie,
+          manualReview:  result.manualReview || false,
         } : x
       )
       setFiles([...current])

@@ -108,14 +108,19 @@ export function buildTwin(documents, fiche) {
   const liens  = []
 
   // Périmètre : inclure tous les docs dont l'extraction a réussi
-  // = pas d'image/scan (manualReview) ET contenu extrait présent (fields_summary ou fields non vide)
-  const extractedDocs = documents.filter(d =>
-    !d.manualReview &&
-    d.status === 'analysé' &&
-    (
-      (d.fields_summary && d.fields_summary !== 'Extraction échouée' && d.fields_summary !== 'Analyse manuelle requise') ||
-      (d.fields && d.fields !== 'Extraction échouée' && d.fields !== 'Analyse manuelle requise')
-    )
+  // Critère strict : analysé + pas image/scan + contenu non vide
+  const extractedDocs = documents.filter(d => {
+    if (d.manualReview) return false                          // images/scans → exclus
+    if (d.status !== 'analysé') return false                  // pas encore analysé
+    const f = d.fields_summary || d.fields || ''
+    if (!f || f === 'Extraction échouée' || f === 'Analyse manuelle requise') return false
+    return true
+  })
+
+  // Log de debug (sera visible dans la console du navigateur)
+  console.log('[TwinBuilder] documents reçus:', documents.length,
+    '| extractedDocs:', extractedDocs.length,
+    '| détail:', extractedDocs.map(d => ({ name: d.name, type: d.type, status: d.status, fields: d.fields?.slice?.(0,30) }))
   )
 
   if (extractedDocs.length === 0) return { noeuds: [], liens: [] }
