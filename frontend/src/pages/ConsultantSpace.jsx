@@ -1055,9 +1055,9 @@ function DossierView({ navigate, client, onBack }) {
               {/* KPIs */}
               <div className="px-6 pt-5 grid grid-cols-4 gap-3">
                 {[
-                  { label: 'Documents', value: documents.length, color: 'text-white' },
-                  { label: 'Alertes', value: activeAlerts, color: 'text-yellow-400' },
-                  { label: 'Validés', value: okDocs, color: 'text-green-400' },
+                  { label: 'Documents',   value: documents.length,  color: 'text-white' },
+                  { label: 'Alertes',     value: totalAlertes,       color: 'text-yellow-400' },
+                  { label: 'Validés',     value: okDocs,             color: 'text-green-400' },
                   { label: 'Score global', value: documents.filter(d=>d.status==='analysé').length > 0 ? Math.round(documents.filter(d=>d.status==='analysé').reduce((s,d)=>s+(d.score??50),0)/documents.filter(d=>d.status==='analysé').length)+'%' : '—', color: 'text-[#00b4d8]' },
                 ].map(s => (
                   <div key={s.label} className="bg-white/5 rounded-xl px-4 py-3 text-center">

@@ -273,15 +273,25 @@ export default function ClientSpace() {
       )
       setFiles([...current])
 
-      // 5. Si image → notification au client que le fichier n'est pas lisible
+      // 5. Notifications client selon le motif d'échec
       const ext = f.name.split('.').pop().toLowerCase()
       const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)
+      const isExtractionFailed = !isImage &&
+        (result.fields === 'Extraction échouée' || result.fields_summary === 'Extraction échouée')
+
       if (isImage && clientId) {
         addMessage(clientId, {
           from: 'system',
           type: 'doc_unreadable',
           docType: f.name,
           note: 'Ce fichier image ne peut pas être lu automatiquement. Veuillez redéposer ce document en format PDF texte ou Word afin que son contenu soit analysé.',
+        })
+      } else if (isExtractionFailed && clientId) {
+        addMessage(clientId, {
+          from: 'system',
+          type: 'doc_unreadable',
+          docType: f.name,
+          note: 'Le contenu de ce fichier n\'a pas pu être extrait (fichier corrompu, protégé ou non lisible). Veuillez vérifier et redéposer ce document dans un format accessible.',
         })
       }
     }
