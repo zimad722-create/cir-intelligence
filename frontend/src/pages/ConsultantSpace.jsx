@@ -1432,170 +1432,415 @@ function DossierView({ navigate, client, onBack }) {
         )}
 
         {/* == TAB : Rapport & Grille == */}
-        {tab === 'report' && (
+        {tab === 'report' && (() => {
+          // ── Données locales pour l'affichage écran ──
+          const cas1Docs = documents.filter(d =>
+            !d.manualReview && d.status === 'analysé' &&
+            d.type !== 'Type inconnu' &&
+            d.fields !== 'Extraction échouée' && d.fields_summary !== 'Extraction échouée'
+          )
+          const cas2Docs = documents.filter(d =>
+            !d.manualReview && d.status === 'analysé' &&
+            d.type === 'Type inconnu' &&
+            d.fields !== 'Extraction échouée' && d.fields_summary !== 'Extraction échouée'
+          )
+          const cas3Docs = documents.filter(d =>
+            d.manualReview === true ||
+            d.fields === 'Extraction échouée' || d.fields_summary === 'Extraction échouée'
+          )
+          const exploitables = [...cas1Docs, ...cas2Docs]
+          const alertesOuvertes = alerts.filter(a => a.status === 'open')
+          const reglesVerifiees = rules.filter(r => r.active && !alertesOuvertes.find(a => (a.regle || a.rule) === r.label))
+          const reglesAnomalies = alertesOuvertes
+          const reglesNonVerif  = cas3Docs.length > 0 ? rules.filter(r => r.active).slice(0, 3) : []
+
+          // Catégorisation des liens du jumeau pour l'explication
+          const LINK_CATEGORIES = {
+            'RH / Temps': ['temps', 'rh', 'personnel', 'salarié', 'relevé'],
+            'Finance / Contrat': ['financ', 'contrat', 'facture', 'montant', 'budget'],
+            'Projet': ['projet', 'technical', 'rapport', 'technique'],
+            'Acteurs': ['prestataire', 'partenaire', 'sous-traitant'],
+          }
+          const liensParCategorie = {}
+          if (jumeau?.liens) {
+            jumeau.liens.filter(l => l.lateral && l.label).forEach(l => {
+              const from = jumeau.noeuds?.find(n => n.id === l.from)
+              const to   = jumeau.noeuds?.find(n => n.id === l.to)
+              if (!from || !to) return
+              let cat = 'Autres'
+              for (const [c, kws] of Object.entries(LINK_CATEGORIES)) {
+                if (kws.some(kw => l.label.toLowerCase().includes(kw) || from.label.toLowerCase().includes(kw) || to.label.toLowerCase().includes(kw))) {
+                  cat = c; break
+                }
+              }
+              if (!liensParCategorie[cat]) liensParCategorie[cat] = []
+              liensParCategorie[cat].push({ from: from.label, to: to.label, label: l.label })
+            })
+          }
+
+          return (
           <div className="space-y-6">
 
-            {/* ── Rapport de cohérence ── */}
+            {/* ── En-tête du rapport ── */}
             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
               <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
                 <div>
-                  <span className="text-white font-semibold">Rapport de cohérence</span>
-                  <p className="text-white/40 text-xs mt-0.5">Synthèse structurée — 5 sections · incluse dans le PDF</p>
+                  <span className="text-white font-semibold text-base">Rapport de cohérence CIR</span>
+                  <p className="text-white/40 text-xs mt-0.5">
+                    {ficheContexte
+                      ? `Projet : ${ficheContexte.Projet || ficheContexte.projet || '—'}  ·  Période : ${ficheContexte.Période || ficheContexte.periode || '—'}`
+                      : 'Fiche de contexte non renseignée'}
+                    {' · '}{new Date().toLocaleDateString('fr-FR')}
+                  </p>
                 </div>
                 <button onClick={downloadPDF}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-xl text-sm font-medium transition-colors">
+                  className="flex items-center gap-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-[#00b4d8]/20">
                   <Download size={15} /> Télécharger PDF
                 </button>
               </div>
 
-              {/* KPIs bilan */}
+              {/* ── KPIs ── */}
               <div className="px-6 pt-5 grid grid-cols-4 gap-3">
                 {[
-                  { label: 'Total déposés', value: documents.length, color: 'text-white' },
-                  { label: 'Cas 1 (type connu)', value: documents.filter(d => !d.manualReview && d.status === 'analysé' && d.type !== 'Type inconnu' && d.fields !== 'Extraction échouée').length, color: 'text-green-400' },
-                  { label: 'Cas 2 (type inconnu)', value: unknownTypeDocs.length, color: 'text-yellow-400' },
-                  { label: 'Cas 3 (non lisibles)', value: imageFiles.length + failedDocs.length, color: 'text-red-400' },
+                  { label: 'Total déposés',      value: documents.length,  color: 'text-white',       bg: 'bg-white/5 border-white/10' },
+                  { label: 'Cas 1 — type connu', value: cas1Docs.length,   color: 'text-green-400',   bg: 'bg-green-500/8 border-green-500/20' },
+                  { label: 'Cas 2 — inconnu',    value: cas2Docs.length,   color: 'text-yellow-400',  bg: 'bg-yellow-500/8 border-yellow-500/20' },
+                  { label: 'Cas 3 — non lisible',value: cas3Docs.length,   color: 'text-red-400',     bg: 'bg-red-500/8 border-red-500/20' },
                 ].map(s => (
-                  <div key={s.label} className="bg-white/5 rounded-xl px-4 py-3 text-center">
-                    <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-                    <p className="text-white/40 text-xs mt-1">{s.label}</p>
+                  <div key={s.label} className={`rounded-xl px-4 py-3 text-center border ${s.bg}`}>
+                    <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-white/40 text-xs mt-1 leading-tight">{s.label}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="px-6 py-5 space-y-5">
+              <div className="px-6 pb-6 pt-5 space-y-6">
 
-                {/* A — Bilan des dépôts */}
-                <div>
-                  <h3 className="text-[#00b4d8] font-bold text-xs uppercase tracking-wide mb-2">A · Bilan des dépôts</h3>
-                  <div className="space-y-1.5">
-                    <div className="flex items-start gap-2 text-sm">
-                      <span className="text-green-400 font-bold w-14 shrink-0">Cas 1</span>
-                      <span className="text-white/60">{documents.filter(d => !d.manualReview && d.status === 'analysé' && d.type !== 'Type inconnu' && d.fields !== 'Extraction échouée').length} document(s) — extraction réussie, type reconnu</span>
+                {/* ══ A — BILAN DES DÉPÔTS ══ */}
+                <section>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">A</span>
+                    <h3 className="text-white font-semibold text-sm">Bilan des dépôts</h3>
+                  </div>
+                  <div className="rounded-xl overflow-hidden border border-white/10">
+                    {/* En-tête tableau */}
+                    <div className="grid grid-cols-[90px_1fr_auto] bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white/30">
+                      <span>Cas</span><span>Description</span><span className="text-right pr-2">Nb</span>
                     </div>
-                    <div className="flex items-start gap-2 text-sm">
-                      <span className="text-yellow-400 font-bold w-14 shrink-0">Cas 2</span>
-                      <span className="text-white/60">{unknownTypeDocs.length} document(s) — extraction réussie, type non reconnu{unknownTypeDocs.length > 0 ? ` (${unknownTypeDocs.map(d => d.name).join(', ')})` : ''}</span>
+                    {/* Cas 1 */}
+                    <div className="grid grid-cols-[90px_1fr_auto] border-t border-white/5 px-4 py-3 items-start gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-green-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-400" />Cas 1
+                      </span>
+                      <div>
+                        <p className="text-white/80 text-sm font-medium">Extraction réussie — type reconnu</p>
+                        <p className="text-white/40 text-xs mt-0.5">Inclus dans l'analyse automatique.</p>
+                        {cas1Docs.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {cas1Docs.map((d, i) => (
+                              <span key={i} className="text-xs bg-green-500/10 border border-green-500/15 text-green-300 rounded px-2 py-0.5">{d.name}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-green-400 font-bold text-lg pr-2 text-right">{cas1Docs.length}</span>
                     </div>
-                    <div className="flex items-start gap-2 text-sm">
-                      <span className="text-red-400 font-bold w-14 shrink-0">Cas 3</span>
-                      <span className="text-white/60">{imageFiles.length + failedDocs.length} document(s) — non lisibles, exclus de l'analyse{(imageFiles.length + failedDocs.length) > 0 ? ` : ${[...imageFiles, ...failedDocs].map(d => d.name).join(', ')}` : ''}</span>
+                    {/* Cas 2 */}
+                    <div className="grid grid-cols-[90px_1fr_auto] border-t border-white/5 px-4 py-3 items-start gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-yellow-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />Cas 2
+                      </span>
+                      <div>
+                        <p className="text-white/80 text-sm font-medium">Extraction réussie — type non reconnu</p>
+                        <p className="text-white/40 text-xs mt-0.5">Inclus dans l'analyse — le type doit être vérifié manuellement.</p>
+                        {cas2Docs.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {cas2Docs.map((d, i) => (
+                              <span key={i} className="text-xs bg-yellow-500/10 border border-yellow-500/15 text-yellow-300 rounded px-2 py-0.5">{d.name}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-yellow-400 font-bold text-lg pr-2 text-right">{cas2Docs.length}</span>
+                    </div>
+                    {/* Cas 3 */}
+                    <div className="grid grid-cols-[90px_1fr_auto] border-t border-white/5 px-4 py-3 items-start gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400" />Cas 3
+                      </span>
+                      <div>
+                        <p className="text-white/80 text-sm font-medium">Extraction échouée / non lisible</p>
+                        <p className="text-white/40 text-xs mt-0.5">Exclus de l'analyse automatique — action client requise.</p>
+                        {cas3Docs.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {cas3Docs.map((d, i) => (
+                              <span key={i} className="text-xs bg-red-500/10 border border-red-500/15 text-red-300 rounded px-2 py-0.5">
+                                {d.name}{d.manualReview ? ' (image/scan)' : ' (extraction échouée)'}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-red-400 font-bold text-lg pr-2 text-right">{cas3Docs.length}</span>
                     </div>
                   </div>
-                </div>
+                </section>
 
-                {/* B — Informations extraites */}
-                <div>
-                  <h3 className="text-[#00b4d8] font-bold text-xs uppercase tracking-wide mb-2">B · Informations extraites par document</h3>
-                  {documents.filter(d => !d.manualReview && d.status === 'analysé' && d.fields !== 'Extraction échouée').length === 0 ? (
-                    <p className="text-white/30 text-sm italic">Aucun document exploitable.</p>
+                {/* ══ B — INFORMATIONS EXTRAITES ══ */}
+                <section>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">B</span>
+                    <h3 className="text-white font-semibold text-sm">Informations extraites par document</h3>
+                    <span className="text-white/30 text-xs">(Cas 1 et Cas 2 uniquement)</span>
+                  </div>
+                  {exploitables.length === 0 ? (
+                    <p className="text-white/30 text-sm italic px-1">Aucun document exploitable dans ce dossier.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {exploitables.map((d, i) => {
+                        const isCas2 = d.type === 'Type inconnu'
+                        const entites = d.entites
+                          ? Object.entries(d.entites).filter(([, v]) => v !== null && v !== undefined && v !== '' && String(v).trim() !== '')
+                          : []
+                        return (
+                          <div key={i} className={`rounded-xl border overflow-hidden ${isCas2 ? 'border-yellow-500/20' : 'border-white/10'}`}>
+                            {/* En-tête document */}
+                            <div className={`flex items-center justify-between px-4 py-2.5 ${isCas2 ? 'bg-yellow-500/8' : 'bg-white/5'}`}>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <FileText size={13} className={isCas2 ? 'text-yellow-400 shrink-0' : 'text-green-400 shrink-0'} />
+                                <span className="text-white font-semibold text-sm truncate">{d.name}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0 ml-3">
+                                {d.score > 0 && (
+                                  <span className={`text-xs font-medium ${d.score >= 80 ? 'text-green-400' : d.score >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                    {d.score}%
+                                  </span>
+                                )}
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isCas2 ? 'bg-yellow-500/15 text-yellow-400' : 'bg-green-500/15 text-green-400'}`}>
+                                  {isCas2 ? 'Type inconnu' : d.type}
+                                </span>
+                              </div>
+                            </div>
+                            {/* Corps */}
+                            <div className="px-4 py-3 space-y-2">
+                              {(d.fields_summary || d.fields) && (
+                                <p className="text-white/55 text-xs leading-relaxed italic">{d.fields_summary || d.fields}</p>
+                              )}
+                              {entites.length > 0 ? (
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                                  {entites.map(([k, v]) => (
+                                    <div key={k} className="flex gap-1.5 text-xs">
+                                      <span className="text-white/30 shrink-0 capitalize">{k.replace(/_/g, ' ')} :</span>
+                                      <span className="text-white/70 font-medium truncate">{String(v)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-white/25 text-xs italic">Aucune entité structurée extraite.</p>
+                              )}
+                              {d.anomalie && (
+                                <div className="flex items-start gap-2 bg-yellow-500/8 border border-yellow-500/20 rounded-lg px-3 py-2 mt-1">
+                                  <AlertTriangle size={12} className="text-yellow-400 shrink-0 mt-0.5" />
+                                  <span className="text-yellow-400/90 text-xs">{d.anomalie}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {/* ══ C — CARTE DES PREUVES RELIÉES ══ */}
+                <section>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">C</span>
+                    <h3 className="text-white font-semibold text-sm">Carte des preuves reliées</h3>
+                  </div>
+                  {!jumeau?.noeuds?.length ? (
+                    <p className="text-white/30 text-sm italic px-1">Lancez la vérification de cohérence pour établir la carte des preuves.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* Explication du projet central */}
+                      <div className="bg-[#00b4d8]/5 border border-[#00b4d8]/15 rounded-xl px-4 py-3">
+                        <p className="text-white/60 text-sm leading-relaxed">
+                          Tous les documents exploitables (Cas 1 et Cas 2) sont rattachés au projet central
+                          {ficheContexte?.Projet || ficheContexte?.projet ? ` « ${ficheContexte.Projet || ficheContexte.projet} »` : ''}.
+                          {cas3Docs.length > 0 && ` Les ${cas3Docs.length} fichier(s) non lisibles (Cas 3) sont exclus de cette carte.`}
+                        </p>
+                      </div>
+
+                      {/* Nœuds rattachés */}
+                      <div>
+                        <p className="text-white/30 text-xs uppercase tracking-wide font-medium mb-2">Documents rattachés au projet central</p>
+                        <div className="flex flex-wrap gap-2">
+                          {jumeau.noeuds.filter(n => n.type !== 'projet').map((n, i) => (
+                            <div key={i} className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#00b4d8]" />
+                              <span className="text-white/70 text-xs font-medium">{n.label}</span>
+                              {n.type && <span className="text-white/25 text-[10px]">({n.type})</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Relations transversales par catégorie */}
+                      {Object.keys(liensParCategorie).length > 0 && (
+                        <div>
+                          <p className="text-white/30 text-xs uppercase tracking-wide font-medium mb-2">Liens transversaux entre documents</p>
+                          <div className="space-y-2">
+                            {Object.entries(liensParCategorie).map(([cat, liens]) => (
+                              <div key={cat} className="bg-white/3 border border-white/8 rounded-xl px-4 py-3">
+                                <p className="text-[#00b4d8] text-xs font-semibold uppercase tracking-wide mb-2">{cat}</p>
+                                {liens.map((l, i) => (
+                                  <div key={i} className="flex items-center gap-2 text-xs text-white/55 mb-1 last:mb-0">
+                                    <span className="font-medium text-white/70">{l.from}</span>
+                                    <span className="text-[#00b4d8]">→</span>
+                                    <span className="font-medium text-white/70">{l.to}</span>
+                                    <span className="text-white/25 ml-1">({l.label})</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </section>
+
+                {/* ══ D — COHÉRENCE CIR ══ */}
+                <section>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">D</span>
+                    <h3 className="text-white font-semibold text-sm">Cohérence avec les règles CIR</h3>
+                  </div>
+                  {alerts.length === 0 && cas3Docs.length === 0 && documents.length === 0 ? (
+                    <p className="text-white/30 text-sm italic px-1">Lancez la vérification depuis l'onglet Documents pour voir les résultats.</p>
                   ) : (
                     <div className="space-y-2">
-                      {documents.filter(d => !d.manualReview && d.status === 'analysé' && d.fields !== 'Extraction échouée').map((d, i) => (
-                        <div key={i} className={`rounded-xl px-4 py-3 border ${d.type === 'Type inconnu' ? 'bg-yellow-500/5 border-yellow-500/15' : 'bg-green-500/5 border-green-500/10'}`}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-white text-sm font-medium truncate">{d.name}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ml-2 ${d.type === 'Type inconnu' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-green-500/15 text-green-400'}`}>
-                              {d.type || 'Type inconnu'}
-                            </span>
+                      {/* Résumé barre */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: 'Règles vérifiées', value: reglesVerifiees.length, color: 'text-green-400', bg: 'bg-green-500/8 border-green-500/15' },
+                          { label: 'Anomalies', value: reglesAnomalies.length, color: 'text-red-400', bg: 'bg-red-500/8 border-red-500/15' },
+                          { label: 'Non vérifiables', value: cas3Docs.length > 0 ? '?' : '0', color: cas3Docs.length > 0 ? 'text-orange-400' : 'text-white/40', bg: cas3Docs.length > 0 ? 'bg-orange-500/8 border-orange-500/15' : 'bg-white/5 border-white/10' },
+                        ].map(s => (
+                          <div key={s.label} className={`rounded-xl px-3 py-2.5 text-center border ${s.bg}`}>
+                            <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+                            <p className="text-white/35 text-xs mt-0.5">{s.label}</p>
                           </div>
-                          <p className="text-white/50 text-xs leading-relaxed">{d.fields_summary || d.fields || '—'}</p>
-                          {d.entites && Object.entries(d.entites).filter(([, v]) => v).length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
-                              {Object.entries(d.entites).filter(([, v]) => v).slice(0, 5).map(([k, v]) => (
-                                <span key={k} className="text-xs bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white/50">
-                                  <span className="text-white/30">{k.replace(/_/g, ' ')} :</span> {String(v).slice(0, 30)}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                        ))}
+                      </div>
 
-                {/* C — Carte des preuves */}
-                <div>
-                  <h3 className="text-[#00b4d8] font-bold text-xs uppercase tracking-wide mb-2">C · Carte des preuves reliées</h3>
-                  {jumeau?.noeuds?.length > 0 ? (
-                    <div className="space-y-1.5">
-                      {jumeau.noeuds.map((n, i) => (
-                        <div key={i} className="flex items-center gap-2 text-sm text-white/60">
-                          <span className="w-2 h-2 rounded-full bg-[#00b4d8] shrink-0" />
-                          <span>{n.label}</span>
-                          {n.type && <span className="text-white/25 text-xs">({n.type})</span>}
-                          {n.sources?.length > 0 && <span className="text-white/25 text-xs ml-auto">{n.sources.join(', ')}</span>}
-                        </div>
-                      ))}
-                      {jumeau.liens?.filter(l => l.lateral && l.label).length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-white/5 space-y-1">
-                          <p className="text-white/30 text-xs">Relations transversales :</p>
-                          {jumeau.liens.filter(l => l.lateral && l.label).map((l, i) => {
-                            const from = jumeau.noeuds.find(n => n.id === l.from)
-                            const to   = jumeau.noeuds.find(n => n.id === l.to)
-                            if (!from || !to) return null
-                            return (
-                              <div key={i} className="text-xs text-white/50">
-                                {from.label} <span className="text-[#00b4d8]">→</span> {to.label} <span className="text-white/25">({l.label})</span>
+                      {/* Règles OK */}
+                      {reglesVerifiees.length > 0 && (
+                        <div className="rounded-xl border border-green-500/10 overflow-hidden">
+                          <div className="bg-green-500/5 px-4 py-2 flex items-center gap-2">
+                            <CheckCircle size={12} className="text-green-400" />
+                            <span className="text-green-400 text-xs font-semibold uppercase tracking-wide">Règles vérifiées / cohérentes</span>
+                          </div>
+                          <div className="divide-y divide-white/5">
+                            {reglesVerifiees.map(r => (
+                              <div key={r.id} className="flex items-center gap-2 px-4 py-2">
+                                <span className="text-green-400 text-xs">✓</span>
+                                <span className="text-white/60 text-sm">{r.label}</span>
                               </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-white/30 text-sm italic">Lancez la vérification de cohérence pour établir la carte des preuves.</p>
-                  )}
-                </div>
-
-                {/* D — Cohérence CIR */}
-                <div>
-                  <h3 className="text-[#00b4d8] font-bold text-xs uppercase tracking-wide mb-2">D · Cohérence avec les règles CIR</h3>
-                  {alerts.length === 0 && (imageFiles.length + failedDocs.length) === 0 ? (
-                    <p className="text-white/30 text-sm italic">Lancez la vérification depuis l'onglet Documents pour voir les résultats.</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {alerts.filter(a => a.status === 'open').length === 0 && alerts.length > 0 && (
-                        <div className="flex items-center gap-2 text-sm text-green-400">
-                          <CheckCircle size={13} className="shrink-0" />
-                          <span>Aucune anomalie — toutes les règles vérifiées sont cohérentes.</span>
-                        </div>
-                      )}
-                      {alerts.filter(a => a.status === 'open').map((a, i) => (
-                        <div key={i} className={`flex items-start gap-2 text-sm rounded-lg px-3 py-2 ${a.severity === 'high' ? 'bg-red-500/8 text-red-400' : 'bg-yellow-500/8 text-yellow-400'}`}>
-                          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-medium">{a.regle || a.rule}</span>
-                            <span className="text-white/40 ml-2 text-xs">{a.description}</span>
+                            ))}
                           </div>
                         </div>
-                      ))}
-                      {(imageFiles.length + failedDocs.length) > 0 && (
-                        <div className="flex items-start gap-2 text-sm bg-orange-500/8 text-orange-400 rounded-lg px-3 py-2">
-                          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-                          <span>{imageFiles.length + failedDocs.length} fichier(s) non lisible(s) — certaines règles ne peuvent pas être vérifiées.</span>
+                      )}
+
+                      {/* Anomalies */}
+                      {reglesAnomalies.length > 0 && (
+                        <div className="rounded-xl border border-red-500/15 overflow-hidden">
+                          <div className="bg-red-500/8 px-4 py-2 flex items-center gap-2">
+                            <AlertTriangle size={12} className="text-red-400" />
+                            <span className="text-red-400 text-xs font-semibold uppercase tracking-wide">Anomalies / alertes</span>
+                          </div>
+                          <div className="divide-y divide-white/5">
+                            {reglesAnomalies.map((a, i) => (
+                              <div key={i} className="px-4 py-3">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className={`text-xs font-bold ${a.severity === 'high' ? 'text-red-400' : 'text-yellow-400'}`}>
+                                    {a.severity === 'high' ? '✕ Critique' : '⚠ Moyen'}
+                                  </span>
+                                  <span className="text-white/70 text-sm font-medium">{a.regle || a.rule}</span>
+                                </div>
+                                <p className="text-white/45 text-xs leading-relaxed">{a.description}</p>
+                                {a.sources?.length > 0 && (
+                                  <p className="text-white/25 text-xs mt-1">Sources : {a.sources.join(', ')}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Non vérifiables (Cas 3) */}
+                      {cas3Docs.length > 0 && (
+                        <div className="bg-orange-500/5 border border-orange-500/15 rounded-xl px-4 py-3 flex items-start gap-2">
+                          <AlertTriangle size={13} className="text-orange-400 shrink-0 mt-0.5" />
+                          <p className="text-orange-400/80 text-xs leading-relaxed">
+                            {cas3Docs.length} fichier(s) non lisible(s) exclu(s) — certaines règles CIR ne peuvent pas être vérifiées complètement tant que ces documents ne sont pas fournis en version lisible.
+                          </p>
                         </div>
                       )}
                     </div>
                   )}
-                </div>
+                </section>
 
-                {/* E — Copilot (conditionnelle) */}
-                {ficheContexte && (
-                  <div>
-                    <h3 className="text-[#00b4d8] font-bold text-xs uppercase tracking-wide mb-2">E · Cohérence avec les déclarations Copilot</h3>
-                    <div className="bg-[#00b4d8]/5 border border-[#00b4d8]/15 rounded-xl px-4 py-3 space-y-2">
-                      {Object.entries(ficheContexte).filter(([k]) => k !== '_confirmedAt').map(([k, v]) => (
-                        <div key={k} className="flex gap-2 text-sm">
-                          <span className="text-white/35 w-28 shrink-0">{k} :</span>
-                          <span className="text-white/70">{v}</span>
+                {/* ══ E — COHÉRENCE COPILOT (conditionnelle) ══ */}
+                {ficheContexte && (() => {
+                  const entries = Object.entries(ficheContexte).filter(([k]) => k !== '_confirmedAt')
+                  const checkCoherence = (k, v) => {
+                    const kl = k.toLowerCase(), vl = String(v).toLowerCase()
+                    if (kl.includes('projet') || kl.includes('nom')) {
+                      const ok = exploitables.some(d => d.type === 'Fiche projet' || (d.fields_summary || '').toLowerCase().includes(vl.slice(0, 10)))
+                      return { label: ok ? 'Fiche projet présente' : 'Fiche projet absente', ok }
+                    }
+                    if (kl.includes('équipe') || kl.includes('salarié')) {
+                      const ok = exploitables.some(d => d.type === 'Fiche personnel' || d.type === 'Relevé de temps')
+                      return { label: ok ? 'Personnel documenté' : 'Pièces RH manquantes', ok }
+                    }
+                    if (kl.includes('prestataire')) {
+                      const ok = exploitables.some(d => d.type === 'Contrat' || d.type === 'Facture')
+                      return { label: ok ? 'Contrat / facture présent' : 'Contrat / facture absent', ok }
+                    }
+                    if (kl.includes('période') || kl.includes('date')) {
+                      return { label: 'Vérification manuelle recommandée', ok: null }
+                    }
+                    return { label: '—', ok: null }
+                  }
+                  return (
+                    <section>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">E</span>
+                        <h3 className="text-white font-semibold text-sm">Cohérence avec les déclarations Copilot</h3>
+                        <span className="text-white/25 text-xs">Confirmée le {ficheContexte._confirmedAt}</span>
+                      </div>
+                      <div className="rounded-xl border border-white/10 overflow-hidden">
+                        <div className="grid grid-cols-[1fr_1fr_140px] bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white/30">
+                          <span>Champ déclaré</span><span>Valeur</span><span>Cohérence</span>
                         </div>
-                      ))}
-                      <p className="text-white/25 text-xs pt-1 border-t border-white/5">Confirmée le {ficheContexte._confirmedAt} · Vérification de cohérence avec les documents incluse dans le PDF.</p>
-                    </div>
-                  </div>
-                )}
+                        {entries.map(([k, v], i) => {
+                          const { label, ok } = checkCoherence(k, v)
+                          return (
+                            <div key={k} className={`grid grid-cols-[1fr_1fr_140px] px-4 py-2.5 border-t border-white/5 items-center gap-2 ${i % 2 === 0 ? '' : 'bg-white/[0.015]'}`}>
+                              <span className="text-white/50 text-sm capitalize">{k}</span>
+                              <span className="text-white/75 text-sm font-medium truncate">{String(v)}</span>
+                              <span className={`text-xs font-semibold ${ok === true ? 'text-green-400' : ok === false ? 'text-yellow-400' : 'text-white/30'}`}>
+                                {ok === true ? '✓ ' : ok === false ? '⚠ ' : ''}{label}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <p className="text-white/20 text-xs mt-2 px-1">Vérification indicative — validation manuelle recommandée pour chaque champ.</p>
+                    </section>
+                  )
+                })()}
 
               </div>
             </div>
@@ -1689,7 +1934,7 @@ function DossierView({ navigate, client, onBack }) {
             </div>
 
           </div>
-        )}
+        )})()}
 
       </main>
 
