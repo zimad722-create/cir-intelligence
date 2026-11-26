@@ -271,13 +271,17 @@ export default function ClientSpace() {
       )
       setFiles([...current])
 
-      // 5. Si type inconnu → message automatique au client
-      if (result.type === 'Type inconnu' && clientId) {
+      // 5. Si image OU type inconnu → notification au client que le fichier n'est pas lisible
+      const ext = f.name.split('.').pop().toLowerCase()
+      const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)
+      if ((isImage || result.type === 'Type inconnu') && clientId) {
         addMessage(clientId, {
           from: 'system',
-          type: 'doc_request',
+          type: 'doc_unreadable',
           docType: f.name,
-          note: 'Ce fichier n\'a pas pu être classifié automatiquement. Veuillez redéposer ce document dans un format plus lisible (PDF texte ou Word).',
+          note: isImage
+            ? 'Ce fichier image ne peut pas être lu automatiquement. Veuillez redéposer ce document en format PDF texte ou Word afin que son contenu soit analysé.'
+            : 'Ce fichier n\'a pas pu être classifié automatiquement. Veuillez redéposer ce document dans un format plus lisible (PDF texte ou Word).',
         })
       }
     }
@@ -351,10 +355,12 @@ export default function ClientSpace() {
                   {consultantMsgs.map(m => (
                     <div key={m.id} className={`px-5 py-4 ${!m.read ? 'bg-[#00b4d8]/5' : ''}`}>
                       <div className="flex items-start gap-3">
-                        <AlertCircle size={15} className="text-[#00b4d8] mt-0.5 shrink-0" />
+                        <AlertCircle size={15} className={`mt-0.5 shrink-0 ${m.type === 'doc_unreadable' ? 'text-red-400' : 'text-[#00b4d8]'}`} />
                         <div className="flex-1">
                           <p className="text-white/80 text-sm leading-relaxed">
-                            Le consultant vous demande de déposer :
+                            {m.type === 'doc_unreadable'
+                              ? '⚠️ Ce fichier n\'a pas pu être lu :'
+                              : 'Le consultant vous demande de déposer :'}
                           </p>
                           <p className="text-white font-semibold text-sm mt-0.5">{m.docType}</p>
                           {m.note && <p className="text-white/50 text-xs mt-1 italic">{m.note}</p>}
@@ -393,9 +399,11 @@ export default function ClientSpace() {
           <Bell size={16} className="text-[#00b4d8] shrink-0" />
           <p className="text-white/80 text-sm flex-1">
             <span className="text-[#00b4d8] font-semibold">
-              Le consultant a {unreadCount} demande{unreadCount > 1 ? 's' : ''} pour vous.
+              {consultantMsgs.filter(m => !m.read && m.type === 'doc_unreadable').length > 0
+                ? `${consultantMsgs.filter(m => !m.read && m.type === 'doc_unreadable').length} fichier(s) non lisible(s) détecté(s).`
+                : `Le consultant a ${unreadCount} demande${unreadCount > 1 ? 's' : ''} pour vous.`}
             </span>{' '}
-            Cliquez sur la cloche pour voir les documents requis.
+            Cliquez sur la cloche pour voir les détails.
           </p>
           <button onClick={() => setShowNotifs(true)} className="text-[#00b4d8] text-sm font-medium hover:underline shrink-0">
             Voir →

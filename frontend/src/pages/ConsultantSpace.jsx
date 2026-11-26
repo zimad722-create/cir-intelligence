@@ -276,7 +276,14 @@ function DossierView({ navigate, client, onBack }) {
   }, [client])
 
   const activeAlerts = alerts.filter(a => a.status === 'open').length
-  const okDocs       = documents.filter(d => d.status === 'ok' || d.status === 'analysé').length
+  const imageFiles   = documents.filter(d => d.manualReview === true)
+  const okDocs       = documents.filter(d =>
+    (d.status === 'ok' || d.status === 'analysé') &&
+    d.type !== 'Type inconnu' &&
+    !d.manualReview &&
+    (d.score ?? 0) >= 70
+  ).length
+  const totalAlertes = activeAlerts + imageFiles.length
 
   // -- Lancer la vérification de cohérence manuellement --
   function lancerVerification() {
@@ -611,7 +618,7 @@ function DossierView({ navigate, client, onBack }) {
             <p className="text-white/40 text-xs">Documents</p>
           </div>
           <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-2 text-center">
-            <p className="text-yellow-400 font-bold text-lg">{activeAlerts}</p>
+            <p className="text-yellow-400 font-bold text-lg">{totalAlertes}</p>
             <p className="text-yellow-400/60 text-xs">Alertes</p>
           </div>
           <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-2 text-center">
@@ -780,19 +787,34 @@ function DossierView({ navigate, client, onBack }) {
               </div>
             </div>
 
-            {/* Alertes de cohérence */}
+            {/* Alertes */}
             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
               <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-                <span className="text-white font-semibold">Alertes de cohérence</span>
-                {alerts.length > 0 && (
+                <span className="text-white font-semibold">Alertes</span>
+                {(alerts.length > 0 || imageFiles.length > 0) && (
                   <span className="text-xs bg-yellow-500/15 text-yellow-400 px-2.5 py-1 rounded-full font-medium">
-                    {alerts.filter(a => a.status === 'open').length} alerte(s)
+                    {totalAlertes} alerte(s)
                   </span>
                 )}
               </div>
               {alerts.length === 0 ? (
                 <div className="px-6 py-5 space-y-4">
-                  {/* Fichiers avec extraction échouée */}
+                  {/* Fichiers images / non lisibles */}
+                  {imageFiles.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-white/40 text-xs uppercase tracking-wide font-medium">Fichiers non lisibles — extraction impossible</p>
+                      {imageFiles.map((d, i) => (
+                        <div key={i} className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                          <AlertTriangle size={14} className="text-red-400 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-white text-sm font-medium">{d.name}</p>
+                            <p className="text-white/50 text-xs mt-0.5">Le système n'a pas pu extraire les informations de ce fichier (image / scan). Le client a été notifié de redéposer ce document en PDF texte ou Word.</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Fichiers type inconnu */}
                   {documents.filter(d => d.type === 'Type inconnu' || d.fields === 'Extraction échouée').length > 0 && (
                     <div className="space-y-2">
                       <p className="text-white/40 text-xs uppercase tracking-wide font-medium">Fichiers nécessitant une action</p>
@@ -810,7 +832,7 @@ function DossierView({ navigate, client, onBack }) {
                   <div className="flex flex-col items-center gap-3 text-center py-4">
                     <ShieldCheck size={20} className="text-[#00b4d8]" />
                     <div>
-                      <p className="text-white/60 text-sm font-medium">Analyse de cohérence en attente</p>
+                      <p className="text-white/60 text-sm font-medium">Analyse en attente</p>
                       <p className="text-white/30 text-xs mt-1">Cliquez sur le bouton pour lancer la vérification des règles CIR.</p>
                     </div>
                     {documents.length > 0 && (
