@@ -15,6 +15,8 @@ import {
   addMessage,
   setRequiredDocs,
   getAlertes,
+  saveAlertes,
+  saveJumeau,
   updateAlerteStatus,
   getCustomQuestions,
   saveCustomQuestions,
