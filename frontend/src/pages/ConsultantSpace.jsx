@@ -275,15 +275,23 @@ function DossierView({ navigate, client, onBack }) {
     return () => clearInterval(interval)
   }, [client])
 
-  const activeAlerts = alerts.filter(a => a.status === 'open').length
-  const imageFiles   = documents.filter(d => d.manualReview === true)
-  const okDocs       = documents.filter(d =>
+  const activeAlerts   = alerts.filter(a => a.status === 'open').length
+  // Alertes = uniquement les fichiers dont l'extraction est impossible (images/scans)
+  const imageFiles     = documents.filter(d => d.manualReview === true)
+  // Type inconnu = extraction OK mais type non reconnu → pas une alerte, compteur séparé
+  const unknownTypeDocs = documents.filter(d =>
+    !d.manualReview &&
+    (d.type === 'Type inconnu' || d.fields === 'Extraction échouée')
+  )
+  // Validés = extraction réussie + type connu + score >= 70
+  const okDocs         = documents.filter(d =>
     (d.status === 'ok' || d.status === 'analysé') &&
     d.type !== 'Type inconnu' &&
+    d.fields !== 'Extraction échouée' &&
     !d.manualReview &&
     (d.score ?? 0) >= 70
   ).length
-  const totalAlertes = activeAlerts + imageFiles.length
+  const totalAlertes   = activeAlerts + imageFiles.length
 
   // -- Lancer la vérification de cohérence manuellement --
   function lancerVerification() {
@@ -621,6 +629,12 @@ function DossierView({ navigate, client, onBack }) {
             <p className="text-yellow-400 font-bold text-lg">{totalAlertes}</p>
             <p className="text-yellow-400/60 text-xs">Alertes</p>
           </div>
+          {unknownTypeDocs.length > 0 && (
+            <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl px-4 py-2 text-center">
+              <p className="text-orange-400 font-bold text-lg">{unknownTypeDocs.length}</p>
+              <p className="text-orange-400/60 text-xs">Type inconnu</p>
+            </div>
+          )}
           <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-2 text-center">
             <p className="text-green-400 font-bold text-lg">{okDocs}</p>
             <p className="text-green-400/60 text-xs">Validés</p>
@@ -791,7 +805,7 @@ function DossierView({ navigate, client, onBack }) {
             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
               <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
                 <span className="text-white font-semibold">Alertes</span>
-                {(alerts.length > 0 || imageFiles.length > 0) && (
+                {totalAlertes > 0 && (
                   <span className="text-xs bg-yellow-500/15 text-yellow-400 px-2.5 py-1 rounded-full font-medium">
                     {totalAlertes} alerte(s)
                   </span>
@@ -799,7 +813,8 @@ function DossierView({ navigate, client, onBack }) {
               </div>
               {alerts.length === 0 ? (
                 <div className="px-6 py-5 space-y-4">
-                  {/* Fichiers images / non lisibles */}
+
+                  {/* Fichiers non lisibles (images/scans) → vraies alertes */}
                   {imageFiles.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-white/40 text-xs uppercase tracking-wide font-medium">Fichiers non lisibles — extraction impossible</p>
@@ -808,27 +823,29 @@ function DossierView({ navigate, client, onBack }) {
                           <AlertTriangle size={14} className="text-red-400 mt-0.5 shrink-0" />
                           <div>
                             <p className="text-white text-sm font-medium">{d.name}</p>
-                            <p className="text-white/50 text-xs mt-0.5">Le système n'a pas pu extraire les informations de ce fichier (image / scan). Le client a été notifié de redéposer ce document en PDF texte ou Word.</p>
+                            <p className="text-white/50 text-xs mt-0.5">Aucune information n'a pu être extraite de ce fichier (image / scan). Le client a été notifié de redéposer ce document en PDF texte ou Word.</p>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
-                  {/* Fichiers type inconnu */}
-                  {documents.filter(d => d.type === 'Type inconnu' || d.fields === 'Extraction échouée').length > 0 && (
+
+                  {/* Fichiers type inconnu → information, pas une alerte */}
+                  {unknownTypeDocs.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-white/40 text-xs uppercase tracking-wide font-medium">Fichiers nécessitant une action</p>
-                      {documents.filter(d => d.type === 'Type inconnu' || d.fields === 'Extraction échouée').map((d, i) => (
-                        <div key={i} className="flex items-start gap-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3">
-                          <AlertTriangle size={14} className="text-yellow-400 mt-0.5 shrink-0" />
+                      <p className="text-white/40 text-xs uppercase tracking-wide font-medium">Fichiers à classifier manuellement</p>
+                      {unknownTypeDocs.map((d, i) => (
+                        <div key={i} className="flex items-start gap-3 bg-orange-500/10 border border-orange-500/20 rounded-xl px-4 py-3">
+                          <Info size={14} className="text-orange-400 mt-0.5 shrink-0" />
                           <div>
                             <p className="text-white text-sm font-medium">{d.name}</p>
-                            <p className="text-white/50 text-xs mt-0.5">Ce fichier n'a pas pu être classifié automatiquement. Vérifiez le format ou demandez au client de redéposer ce document.</p>
+                            <p className="text-white/50 text-xs mt-0.5">Les informations ont été extraites mais le type de ce document n'a pas pu être reconnu automatiquement. Vérifiez et classifiez-le manuellement si nécessaire.</p>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
+
                   <div className="flex flex-col items-center gap-3 text-center py-4">
                     <ShieldCheck size={20} className="text-[#00b4d8]" />
                     <div>

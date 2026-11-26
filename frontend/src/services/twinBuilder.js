@@ -34,18 +34,21 @@ export function buildTwin(documents, fiche) {
   const noeuds = []
   const liens  = []
 
+  // Exclure les fichiers dont l'extraction est impossible (images/scans)
+  const extractedDocs = documents.filter(d => !d.manualReview)
+
   // ── 1. Nœud Projet ──
   // Depuis la fiche copilote si disponible, sinon depuis les documents
   let projetNom = fiche?.Projet || fiche?.projet || null
   if (!projetNom) {
-    const ficheProj = documents.find(d => d.type === 'Fiche projet')
+    const ficheProj = extractedDocs.find(d => d.type === 'Fiche projet')
     projetNom = getE(ficheProj, 'nom_projet') || 'Projet R&D'
   }
 
   let projetPeriodeDebut = fiche?.Période?.split('–')?.[0]?.trim() || null
   let projetPeriodeFin   = fiche?.Période?.split('–')?.[1]?.trim() || null
   if (!projetPeriodeDebut) {
-    const fp = documents.find(d => d.type === 'Fiche projet')
+    const fp = extractedDocs.find(d => d.type === 'Fiche projet')
     projetPeriodeDebut = getE(fp, 'periode_debut')
     projetPeriodeFin   = getE(fp, 'periode_fin')
   }
@@ -57,7 +60,7 @@ export function buildTwin(documents, fiche) {
     sublabel: 'Opération R&D',
     periode_debut: projetPeriodeDebut,
     periode_fin:   projetPeriodeFin,
-    sources: documents
+    sources: extractedDocs
       .filter(d => ['Fiche projet', 'Rapport technique', 'Tableau financier'].includes(d.type))
       .map(d => d.name),
     statut: 'central',
@@ -87,8 +90,8 @@ export function buildTwin(documents, fiche) {
     })
   }
 
-  // Depuis les documents
-  documents.forEach(doc => {
+  // Depuis les documents (extraits seulement)
+  extractedDocs.forEach(doc => {
     const nom    = getE(doc, 'nom') || getE(doc, 'salarie_nom')
     const prenom = getE(doc, 'prenom') || getE(doc, 'salarie_prenom')
     if (!nom) return
@@ -137,8 +140,8 @@ export function buildTwin(documents, fiche) {
     })
   }
 
-  // Depuis les documents
-  documents.forEach(doc => {
+  // Depuis les documents (extraits seulement)
+  extractedDocs.forEach(doc => {
     const prest = getE(doc, 'prestataire') || getE(doc, 'emetteur')
     if (!prest) return
     const key = normalize(prest)
@@ -175,7 +178,7 @@ export function buildTwin(documents, fiche) {
   // Regrouper Bulletin de paie + Fiche personnel par salarié
   const docPersonnelMap = {}
 
-  documents.forEach(doc => {
+  extractedDocs.forEach(doc => {
     if (!ALL_DOC_TYPES[doc.type]) return
 
     // Bulletin de paie et Fiche personnel → rattacher au nœud personne existant ou regrouper
