@@ -31,8 +31,8 @@ function computeLayout(noeuds, W, H) {
   if (count === 0) return positions
 
   // Ellipse autour du centre
-  const rx = W * 0.38
-  const ry = H * 0.36
+  const rx = W * 0.40
+  const ry = H * 0.38
   const startAngle = -Math.PI / 2 // commencer en haut
 
   satellites.forEach((n, i) => {
@@ -47,10 +47,10 @@ function computeLayout(noeuds, W, H) {
 }
 
 // ── Nœud document ────────────────────────────────────────────────────────────
-const NODE_W = 148
-const NODE_H = 52
-const CENTER_W = 140
-const CENTER_H = 56
+const NODE_W = 165
+const NODE_H = 54
+const CENTER_W = 155
+const CENTER_H = 58
 
 function NodeDoc({ node, pos, isSelected, onClick }) {
   const x = pos.x - NODE_W / 2
@@ -86,7 +86,7 @@ function NodeDoc({ node, pos, isSelected, onClick }) {
         fill={isSelected ? '#1d4ed8' : '#1e293b'}
         fontFamily="system-ui, sans-serif"
       >
-        {node.label.length > 18 ? node.label.slice(0, 17) + '…' : node.label}
+        {node.label.length > 22 ? node.label.slice(0, 21) + '…' : node.label}
       </text>
       {/* Sous-titre type */}
       <text
@@ -125,7 +125,7 @@ function NodeCenter({ node, pos, isSelected, onClick }) {
         fontSize={12} fontWeight="700" fill="white"
         fontFamily="system-ui, sans-serif"
       >
-        {node.label.length > 14 ? node.label.slice(0, 13) + '…' : node.label}
+        {node.label.length > 17 ? node.label.slice(0, 16) + '…' : node.label}
       </text>
       <text
         x={x + 36} y={y + 38}
@@ -146,7 +146,7 @@ function EdgeLine({ from, to, label, lateral, positions }) {
 
   // Pour les liens vers le centre : placer le label à 35% du chemin depuis le doc (pas au milieu)
   // Pour les liens latéraux : placer au milieu
-  const t  = lateral ? 0.5 : 0.38
+  const t  = lateral ? 0.5 : 0.32
   const lx = pFrom.x + (pTo.x - pFrom.x) * t
   const ly = pFrom.y + (pTo.y - pFrom.y) * t
 
@@ -192,7 +192,7 @@ function EdgeLine({ from, to, label, lateral, positions }) {
               fontFamily="system-ui, sans-serif"
               fontWeight={lateral ? '500' : '500'}
             >
-              {line.length > 20 ? line.slice(0, 19) + '…' : line}
+              {line.length > 24 ? line.slice(0, 23) + '…' : line}
             </text>
           ))}
         </g>
@@ -277,7 +277,7 @@ function DetailPanel({ node, onClose }) {
 export default function TwinMap({ jumeau, alertes = [] }) {
   const [selected, setSelected] = useState(null)
 
-  const W = 900, H = 460
+  const W = 1000, H = 560
 
   const positions = useMemo(() => {
     if (!jumeau?.noeuds) return {}
@@ -328,7 +328,7 @@ export default function TwinMap({ jumeau, alertes = [] }) {
 
       {/* SVG */}
       <div className="relative bg-[#f8fafc]">
-        <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
+        <svg width="100%" viewBox={`-20 -20 ${W + 40} ${H + 40}`} className="overflow-visible">
 
           {/* Lignes vers le centre en premier (en dessous) */}
           {liensVersCenter.map((l, i) => (

@@ -260,23 +260,33 @@ function DossierView({ navigate, client, onBack }) {
     return () => clearInterval(interval)
   }, [client])
 
-  const activeAlerts   = alerts.filter(a => a.status === 'open').length
-  // Alertes = uniquement les fichiers dont l'extraction est impossible (images/scans)
-  const imageFiles     = documents.filter(d => d.manualReview === true)
-  // Type inconnu = extraction OK mais type non reconnu → pas une alerte, compteur séparé
+  const activeAlerts    = alerts.filter(a => a.status === 'open').length
+  // Cas 3a : images/scans — extraction impossible
+  const imageFiles      = documents.filter(d => d.manualReview === true)
+  // Cas 3b : extraction échouée (PDF/DOCX/Excel dont le contenu n'a pas pu être lu)
+  const failedDocs      = documents.filter(d =>
+    !d.manualReview &&
+    d.status === 'analysé' &&
+    (d.fields === 'Extraction échouée' || d.fields_summary === 'Extraction échouée')
+  )
+  // Cas 2 : extraction OK mais type non reconnu (type inconnu uniquement, sans échec)
   const unknownTypeDocs = documents.filter(d =>
     !d.manualReview &&
-    (d.type === 'Type inconnu' || d.fields === 'Extraction échouée')
+    d.status === 'analysé' &&
+    d.type === 'Type inconnu' &&
+    d.fields !== 'Extraction échouée' &&
+    d.fields_summary !== 'Extraction échouée'
   )
   // Validés = extraction réussie + type connu + score >= 70
   const okDocs         = documents.filter(d =>
     (d.status === 'ok' || d.status === 'analysé') &&
     d.type !== 'Type inconnu' &&
     d.fields !== 'Extraction échouée' &&
+    d.fields_summary !== 'Extraction échouée' &&
     !d.manualReview &&
     (d.score ?? 0) >= 70
   ).length
-  const totalAlertes   = activeAlerts + imageFiles.length
+  const totalAlertes   = activeAlerts + imageFiles.length + failedDocs.length
 
   // -- Lancer la vérification de cohérence manuellement --
   function lancerVerification() {
@@ -815,7 +825,23 @@ function DossierView({ navigate, client, onBack }) {
                     </div>
                   )}
 
-                  {/* Fichiers type inconnu → information, pas une alerte */}
+                  {/* Fichiers extraction échouée (Cas 3b) → alertes */}
+                  {failedDocs.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-white/40 text-xs uppercase tracking-wide font-medium">Fichiers avec extraction échouée</p>
+                      {failedDocs.map((d, i) => (
+                        <div key={i} className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                          <AlertTriangle size={14} className="text-red-400 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-white text-sm font-medium">{d.name}</p>
+                            <p className="text-white/50 text-xs mt-0.5">Le contenu de ce fichier n'a pas pu être extrait. Vérifiez que le fichier n'est pas corrompu ou protégé, et demandez au client de le redéposer.</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Fichiers type inconnu (Cas 2) → information, pas une alerte */}
                   {unknownTypeDocs.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-white/40 text-xs uppercase tracking-wide font-medium">Fichiers à classifier manuellement</p>

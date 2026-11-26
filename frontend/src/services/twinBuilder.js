@@ -178,58 +178,96 @@ export function buildTwin(documents, fiche) {
   })
 
   // ── 4. Liens transversaux entre documents ────────────────────────────────
-  // On compare les paires de documents pour détecter des entités communes
+  // Collecte toutes les entités pertinentes de chaque doc pour comparaison
+  function getEntitesDoc(doc) {
+    const e = doc.entites || {}
+    return {
+      projet:       e.projet || e.nom_projet || null,
+      orgs:         [e.employeur, e.entreprise, e.emetteur, e.client, e.destinataire, e.prestataire]
+                      .filter(Boolean).map(v => normalize(v)),
+      personnes:    [e.salarie_nom, e.salarie_prenom, e.nom, e.prenom, e.auteur, e.responsable]
+                      .filter(Boolean).map(v => normalize(v)),
+      periode:      e.periode_debut || e.periode_fin || e.periode || null,
+      montant:      e.montant_ht || e.montant_ttc || e.salaire_brut || null,
+      prestataire:  e.prestataire || e.emetteur || null,
+      contrat_ref:  e.contrat_ref || e.numero_contrat || null,
+    }
+  }
 
   for (let i = 0; i < docNodes.length; i++) {
     for (let j = i + 1; j < docNodes.length; j++) {
       const { node: na, doc: da } = docNodes[i]
       const { node: nb, doc: db } = docNodes[j]
+      const ea = getEntitesDoc(da)
+      const eb = getEntitesDoc(db)
+      const liens_found = []
 
-      const sharedLabels = []
-
-      // Même projet mentionné
-      const projetA = getE(da, 'projet') || getE(da, 'nom_projet')
-      const projetB = getE(db, 'projet') || getE(db, 'nom_projet')
-      if (projetA && projetB && similar(projetA, projetB))
-        sharedLabels.push('R&D - ' + projetA.slice(0, 20))
-
-      // Même organisation / employeur / émetteur / entreprise
-      const orgA = getE(da, 'employeur') || getE(da, 'entreprise') || getE(da, 'emetteur') || getE(da, 'client')
-      const orgB = getE(db, 'employeur') || getE(db, 'entreprise') || getE(db, 'emetteur') || getE(db, 'client')
-      if (orgA && orgB && similar(orgA, orgB) && !sharedLabels.some(l => l.includes(orgA.slice(0,8))))
-        sharedLabels.push(orgA.slice(0, 22))
-
-      // Même personne (salarié / auteur)
-      const nomA = getE(da, 'salarie_nom') || getE(da, 'nom') || getE(da, 'auteur')
-      const nomB = getE(db, 'salarie_nom') || getE(db, 'nom') || getE(db, 'auteur')
-      if (nomA && nomB && similar(nomA, nomB) && !sharedLabels.some(l => l.includes(nomA.slice(0,6))))
-        sharedLabels.push(nomA.slice(0, 20))
-
-      // Même période
-      const perA = getE(da, 'periode_debut') || getE(da, 'periode')
-      const perB = getE(db, 'periode_debut') || getE(db, 'periode')
-      if (perA && perB && similar(perA, perB) && sharedLabels.length === 0)
-        sharedLabels.push('Période ' + perA)
-
-      // Lien financier : prestataire ↔ émetteur ou destinataire
-      const prestA = getE(da, 'prestataire') || getE(da, 'destinataire')
-      const prestB = getE(db, 'prestataire') || getE(db, 'destinataire')
-      const emA    = getE(da, 'emetteur')
-      const emB    = getE(db, 'emetteur')
-      if ((prestA && emB && similar(prestA, emB)) || (prestB && emA && similar(prestB, emA))) {
-        const label = 'Financement R&D'
-        if (!sharedLabels.includes(label)) sharedLabels.push(label)
+      // 1. Même projet nommé
+      if (ea.projet && eb.projet && similar(ea.projet, eb.projet)) {
+        liens_found.push(ea.projet.length > 18 ? ea.projet.slice(0, 17) + '…' : ea.projet)
       }
 
-      if (sharedLabels.length > 0) {
+      // 2. Organisation commune (employeur, entreprise, émetteur, client, prestataire)
+      for (const orgA of ea.orgs) {
+        for (const orgB of eb.orgs) {
+          if (similar(orgA, orgB) && orgA.length > 2) {
+            // Utilise la version non-normalisée pour l'affichage
+            const orgDisplay = da.entites?.employeur || da.entites?.entreprise || da.entites?.emetteur ||
+                               da.entites?.client || da.entites?.destinataire || da.entites?.prestataire ||
+                               db.entites?.employeur || db.entites?.entreprise || db.entites?.emetteur || orgA
+            const label = orgDisplay.length > 22 ? orgDisplay.slice(0, 21) + '…' : orgDisplay
+            if (!liens_found.some(l => similar(l, label))) liens_found.push(label)
+            break
+          }
+        }
+        if (liens_found.length > 0) break
+      }
+
+      // 3. Personne commune (nom, salarié, auteur)
+      for (const pA of ea.personnes) {
+        for (const pB of eb.personnes) {
+          if (similar(pA, pB) && pA.length > 2) {
+            const pDisplay = da.entites?.salarie_nom || da.entites?.nom || da.entites?.auteur ||
+                             db.entites?.salarie_nom || db.entites?.nom || pA
+            const label = pDisplay.length > 20 ? pDisplay.slice(0, 19) + '…' : pDisplay
+            if (!liens_found.some(l => similar(l, label))) liens_found.push(label)
+            break
+          }
+        }
+        if (liens_found.length >= 2) break
+      }
+
+      // 4. Lien financier : prestataire d'un doc = émetteur de l'autre
+      const prestA = da.entites?.prestataire || da.entites?.destinataire
+      const prestB = db.entites?.prestataire || db.entites?.destinataire
+      const emA    = da.entites?.emetteur
+      const emB    = db.entites?.emetteur
+      if ((prestA && emB && similar(prestA, emB)) || (prestB && emA && similar(prestB, emA))) {
+        const label = 'Financement / Facturation'
+        if (!liens_found.some(l => l.includes('Financement'))) liens_found.push(label)
+      }
+
+      // 5. Référence contrat commune
+      if (ea.contrat_ref && eb.contrat_ref && similar(ea.contrat_ref, eb.contrat_ref)) {
+        const label = 'Contrat ' + ea.contrat_ref.slice(0, 12)
+        if (!liens_found.some(l => l.includes('Contrat'))) liens_found.push(label)
+      }
+
+      // 6. Même période (si pas d'autre lien)
+      if (liens_found.length === 0 && ea.periode && eb.periode && similar(ea.periode, eb.periode)) {
+        liens_found.push('Période ' + ea.periode)
+      }
+
+      // On crée un lien par relation trouvée (max 2 par paire pour éviter la surcharge)
+      liens_found.slice(0, 2).forEach(label => {
         liens.push({
-          from:    na.id,
-          to:      nb.id,
-          label:   sharedLabels[0], // label principal
-          lateral: true,
+          from:     na.id,
+          to:       nb.id,
+          label,
+          lateral:  true,
           toCenter: false,
         })
-      }
+      })
     }
   }
 
