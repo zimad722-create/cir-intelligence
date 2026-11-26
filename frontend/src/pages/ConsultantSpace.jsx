@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, FileText, AlertTriangle, CheckCircle,
   ShieldCheck, Plus, Trash2, Download, ChevronDown, ChevronUp,
-  FolderPlus, Send, Bell, Users, X, Info, Loader2,
+  FolderPlus, Send, Bell, Users, X, Info,
 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import {
@@ -22,7 +22,7 @@ import {
   saveCustomQuestions,
 } from '../store'
 import TwinMap from '../components/TwinMap'
-import { generateFullReport, buildReportData } from '../services/reportGenerator'
+import { buildReportData } from '../services/reportGenerator'
 import { buildTwin, checkRules } from '../services/twinBuilder'
 import { FIXED_QUESTIONS } from '../services/groq'
 
@@ -348,9 +348,7 @@ function DossierView({ navigate, client, onBack }) {
   const [newGrilleLabel, setNewGrilleLabel] = useState('')
 
   // Rapport
-  const [fullReport, setFullReport]           = useState('')
-  const [reportLoading, setReportLoading]     = useState(false)
-  const twinMapRef                            = useRef(null)
+  const twinMapRef = useRef(null)
 
   // Refresh every 3s
   useEffect(() => {
@@ -487,17 +485,7 @@ function DossierView({ navigate, client, onBack }) {
     if (field === 'note')   setGrilleNotes(prev  => ({ ...prev, [ruleId]: value }))
   }
 
-  // -- Génération rapport complet --
-  async function handleGenerateReport() {
-    if (reportLoading || fullReport) return
-    setReportLoading(true)
-    const result = await generateFullReport(client, documents, alerts, ficheContexte, jumeau, rules)
-    if (result.success) setFullReport(result.text)
-    else setFullReport('Erreur lors de la génération du rapport. Veuillez réessayer.')
-    setReportLoading(false)
-  }
-
-  // -- PDF export enrichi --
+  // -- PDF export --
   async function downloadPDF() {
     // Capture du TwinMap si disponible
     let twinMapImg = null
@@ -507,205 +495,443 @@ function DossierView({ navigate, client, onBack }) {
         const canvas = await html2canvas(twinMapRef.current, { backgroundColor: '#f8fafc', scale: 1.5 })
         twinMapImg = canvas.toDataURL('image/png')
       } catch { twinMapImg = null }
-    }    const reportData = buildReportData(client, documents, alerts, ficheContexte, grilleStatus, grilleNotes, rules)
+    }
+
+    const reportData = buildReportData(client, documents, alerts, ficheContexte, grilleStatus, grilleNotes, rules, grilleExtra)
     const doc  = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-    const W    = 210, margin = 15
+    const W    = 210, margin = 15, cw = W - margin * 2
     const blue   = [0, 180, 216], dark = [13, 27, 42], white = [255, 255, 255]
     const gray   = [120, 130, 145], green = [52, 211, 153], yellow = [251, 191, 36], red = [248, 113, 113]
+    const lightBg = [245, 248, 252]
     let y = 0
 
-    // ── Page 1 : Header ──
-    doc.setFillColor(...dark); doc.rect(0, 0, W, 42, 'F')
-    doc.setFillColor(...blue); doc.rect(0, 42, W, 2, 'F')
-    doc.setTextColor(...white); doc.setFont('helvetica', 'bold'); doc.setFontSize(17)
-    doc.text('Rapport de cohérence CIR', margin, 14)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...gray)
-    doc.text(`CIR Intelligence · Client : ${reportData.meta.client} · Analyse du ${reportData.meta.date}`, margin, 22)
-    doc.text(`Projet : ${reportData.projet.nom} · Période : ${reportData.projet.periode}`, margin, 29)
-    doc.text('Statut : brouillon pour le consultant (données de démonstration)', margin, 36)
-    y = 52
-
-    // ── 0. Déclarations copilote ──
-    if (ficheContexte) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...blue)
-      doc.text('0. Déclarations du client (copilote)', margin, y); y += 7
-      doc.setFillColor(240, 248, 255); doc.roundedRect(margin, y, W - margin * 2, 2, 1, 1, 'F')
-      const ficheEntries = Object.entries(ficheContexte).filter(([k]) => k !== '_confirmedAt')
-      ficheEntries.forEach((entry, idx) => {
-        if (y > 265) { doc.addPage(); y = 20 }
-        const [k, v] = entry
-        if (idx % 2 === 0) { doc.setFillColor(245, 250, 255); doc.rect(margin, y - 1, W - margin * 2, 7, 'F') }
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(60, 80, 120)
-        doc.text(k + ' :', margin + 2, y + 3.5)
-        doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 55)
-        const val = String(v).length > 90 ? String(v).slice(0, 89) + '…' : String(v)
-        doc.text(val, margin + 35, y + 3.5)
-        y += 7
-      })
-      doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(...gray)
-      doc.text(`Confirmée le ${ficheContexte._confirmedAt}`, margin, y + 2); y += 10
+    // ── Helpers ──
+    function checkPage(needed = 20) {
+      if (y + needed > 278) { doc.addPage(); y = 20 }
     }
-
-    // ── 1. Synthèse ──
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...blue)
-    doc.text('1. Synthèse', margin, y); y += 7
-    const syntheseText = synthese ||
-      `Le dossier CIR de ${reportData.meta.client} pour le ${reportData.projet.nom} comporte ${reportData.stats.nbDocs} pièces analysées. ${reportData.stats.nbAlertes} alerte(s) ont été détectées. ${reportData.stats.nbValides} documents ont passé les contrôles qualité. La décision finale reste du ressort du consultant LEYTON.`
-
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40, 50, 60)
-    const synLines = doc.splitTextToSize(syntheseText, W - margin * 2)
-    doc.text(synLines, margin, y); y += synLines.length * 5 + 4
-
-    // Score global
-    const score = reportData.stats.scoreGlobal
-    const scoreColor = score >= 80 ? green : score >= 60 ? yellow : red
-    doc.setFillColor(245, 248, 252); doc.roundedRect(margin, y, W - margin * 2, 14, 2, 2, 'F')
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...scoreColor)
-    doc.text(`Score global : ${score}%`, margin + 4, y + 9)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...gray)
-    doc.text(`${reportData.stats.nbAlertesHigh} critique(s) · ${reportData.stats.nbAlertesMedium} moyen(s) · ${reportData.stats.nbValides} validé(s)`, margin + 60, y + 9)
-    y += 20
-
-    // ── 2. Signalements ──
-    if (y > 240) { doc.addPage(); y = 20 }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...blue)
-    doc.text('2. Signalements', margin, y); y += 7
-
-    if (reportData.alertes.length === 0) {
-      doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...gray)
-      doc.text('Aucune alerte détectée.', margin, y); y += 10
-    } else {
-      // En-tête tableau
-      doc.setFillColor(20, 35, 55); doc.rect(margin, y, W - margin * 2, 7, 'F')
+    function sectionTitle(num, title) {
+      checkPage(14)
+      doc.setFillColor(...blue); doc.rect(margin, y, 3, 8, 'F')
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...blue)
+      doc.text(`${num}. ${title}`, margin + 6, y + 6)
+      y += 12
+    }
+    function tableHeader(cols) {
+      // cols = [{label, x, w}]
+      doc.setFillColor(20, 35, 55); doc.rect(margin, y, cw, 7, 'F')
       doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(...gray)
-      ;['ID', 'Gravité', 'Constat', 'Sources', 'Action'].forEach((h, i) => {
-        doc.text(h, [margin+2, margin+16, margin+34, margin+118, margin+148][i], y + 4.5)
-      })
-      y += 9
+      cols.forEach(c => doc.text(c.label, margin + c.x + 2, y + 4.5))
+      y += 7
+    }
+    function pill(text, color, x, py) {
+      doc.setTextColor(...color); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5)
+      doc.text(text, x, py)
+    }
 
-      reportData.alertes.forEach((a, idx) => {
-        if (y > 265) { doc.addPage(); y = 20 }
-        const color = a.status === 'resolved' ? green : a.severity === 'high' ? red : yellow
-        const rowH  = 18
-        if (idx % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(margin, y - 1, W - margin * 2, rowH, 'F') }
-        doc.setFillColor(...color); doc.rect(margin, y - 1, 2, rowH, 'F')
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(30, 40, 55)
-        doc.text(a.id, margin + 2, y + 4)
-        const badge = a.status === 'resolved' ? 'Résolu' : a.severity === 'high' ? 'Haute' : 'Moyenne'
-        doc.setTextColor(...color); doc.text(badge, margin + 16, y + 4)
-        doc.setTextColor(30, 40, 55); doc.setFont('helvetica', 'normal'); doc.setFontSize(7)
-        const desc = doc.splitTextToSize(a.description, 80)
-        doc.text(desc[0], margin + 34, y + 4)
-        if (desc[1]) doc.text(desc[1], margin + 34, y + 9)
-        doc.setTextColor(...gray)
-        const src = a.sources.join(', ').slice(0, 28)
-        doc.text(src, margin + 118, y + 4)
-        y += rowH
+    // ── Page 1 : Header ──
+    doc.setFillColor(...dark); doc.rect(0, 0, W, 44, 'F')
+    doc.setFillColor(...blue); doc.rect(0, 44, W, 2, 'F')
+    doc.setTextColor(...white); doc.setFont('helvetica', 'bold'); doc.setFontSize(18)
+    doc.text('Rapport de cohérence CIR', margin, 15)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...gray)
+    doc.text(`CIR Intelligence  ·  Client : ${reportData.meta.client}  ·  Généré le ${reportData.meta.date} à ${reportData.meta.heure}`, margin, 24)
+    doc.text(`Projet : ${reportData.projet.nom}  ·  Période : ${reportData.projet.periode}`, margin, 31)
+    doc.text(`Équipe : ${reportData.projet.equipe}  ·  Prestataires : ${reportData.projet.prestataires}`, margin, 38)
+    y = 55
+
+    // ── BILAN KPI ──
+    const kpis = [
+      { label: 'Total déposés', value: reportData.stats.nbDocs, color: white },
+      { label: 'Cas 1 (type connu)', value: reportData.stats.nbCas1, color: green },
+      { label: 'Cas 2 (type inconnu)', value: reportData.stats.nbCas2, color: yellow },
+      { label: 'Cas 3 (non lisibles)', value: reportData.stats.nbCas3, color: red },
+    ]
+    const kw = cw / 4
+    kpis.forEach((k, i) => {
+      const kx = margin + i * kw
+      doc.setFillColor(...lightBg); doc.roundedRect(kx, y, kw - 2, 18, 2, 2, 'F')
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...k.color)
+      doc.text(String(k.value), kx + kw / 2 - 2, y + 10, { align: 'center' })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...gray)
+      doc.text(k.label, kx + kw / 2 - 2, y + 15.5, { align: 'center' })
+    })
+    y += 24
+
+    // ══════════════════════════════════════════════
+    // A. BILAN DES DÉPÔTS
+    // ══════════════════════════════════════════════
+    sectionTitle('A', 'Bilan des dépôts')
+
+    // Tableau récap
+    tableHeader([
+      { label: 'Cas', x: 0, w: 15 },
+      { label: 'Description', x: 15, w: 85 },
+      { label: 'Nb', x: 100, w: 10 },
+      { label: 'Fichiers', x: 115, w: 65 },
+    ])
+
+    const bilanRows = [
+      {
+        cas: 'Cas 1', desc: 'Extraction réussie — type reconnu', nb: reportData.stats.nbCas1,
+        color: green,
+        files: reportData.docsValides.map(d => d.name),
+      },
+      {
+        cas: 'Cas 2', desc: 'Extraction réussie — type non reconnu', nb: reportData.stats.nbCas2,
+        color: yellow,
+        files: reportData.docsInconnus.map(d => d.name),
+      },
+      {
+        cas: 'Cas 3', desc: 'Extraction échouée / non lisible (exclus de l\'analyse)', nb: reportData.stats.nbCas3,
+        color: red,
+        files: reportData.docsEchoues.map(d => d.name),
+      },
+    ]
+
+    bilanRows.forEach((row, idx) => {
+      checkPage(12)
+      const rowH = 10
+      if (idx % 2 === 0) { doc.setFillColor(249, 251, 253); doc.rect(margin, y - 1, cw, rowH, 'F') }
+      doc.setFillColor(...row.color); doc.rect(margin, y - 1, 2, rowH, 'F')
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...row.color)
+      doc.text(row.cas, margin + 2, y + 4.5)
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 55)
+      doc.text(row.desc, margin + 17, y + 4.5)
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(...row.color)
+      doc.text(String(row.nb), margin + 102, y + 4.5)
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(...gray)
+      const fileList = row.files.length > 0 ? row.files.join(', ').slice(0, 65) : '—'
+      doc.text(fileList, margin + 117, y + 4.5)
+      y += rowH
+    })
+    y += 4
+
+    // Cas 3 — liste détaillée si présent
+    if (reportData.docsEchoues.length > 0) {
+      checkPage(10)
+      doc.setFillColor(255, 240, 240); doc.roundedRect(margin, y, cw, 6 + reportData.docsEchoues.length * 5.5, 2, 2, 'F')
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...red)
+      doc.text('Fichiers Cas 3 (exclus de l\'analyse automatique) :', margin + 3, y + 4); y += 7
+      reportData.docsEchoues.forEach(d => {
+        checkPage(6)
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(80, 30, 30)
+        doc.text(`• ${d.name}${d.manualReview ? ' (image/scan)' : ' (extraction échouée)'}`, margin + 5, y); y += 5.5
+      })
+      y += 3
+    }
+
+    // ══════════════════════════════════════════════
+    // B. INFORMATIONS EXTRAITES PAR DOCUMENT (Cas 1 + Cas 2)
+    // ══════════════════════════════════════════════
+    checkPage(14)
+    sectionTitle('B', 'Informations extraites par document (Cas 1 et Cas 2)')
+
+    if (reportData.docsExploitables.length === 0) {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...gray)
+      doc.text('Aucun document exploitable dans ce dossier.', margin, y); y += 10
+    } else {
+      reportData.docsExploitables.forEach((d, idx) => {
+        const isCas2 = d.type === 'Type inconnu'
+        const entites = d.entites
+          ? Object.entries(d.entites).filter(([, v]) => v !== null && v !== undefined && v !== '')
+          : []
+        const fieldsText = d.fields_summary || d.fields || '—'
+        const nbLines = Math.max(1, entites.length, 1)
+        checkPage(10 + nbLines * 5)
+
+        // En-tête du document
+        const docColor = isCas2 ? yellow : green
+        doc.setFillColor(isCas2 ? 255 : 240, isCas2 ? 248 : 252, isCas2 ? 230 : 240)
+        doc.roundedRect(margin, y, cw, 8, 1, 1, 'F')
+        doc.setFillColor(...docColor); doc.rect(margin, y, 2, 8, 'F')
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(30, 40, 55)
+        doc.text(d.name, margin + 5, y + 5)
+        const casLabel = isCas2 ? 'Cas 2 — Type inconnu' : `Cas 1 — ${d.type}`
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...docColor)
+        doc.text(casLabel, margin + cw - 2, y + 5, { align: 'right' })
+        y += 10
+
+        // Résumé
+        if (fieldsText && fieldsText !== '—') {
+          checkPage(8)
+          doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(60, 70, 85)
+          const rLines = doc.splitTextToSize(fieldsText, cw - 6)
+          doc.text(rLines, margin + 3, y)
+          y += rLines.length * 4.5 + 2
+        }
+
+        // Entités
+        if (entites.length > 0) {
+          checkPage(6)
+          entites.forEach(([k, v], ei) => {
+            checkPage(5)
+            if (ei % 2 === 0) { doc.setFillColor(249, 251, 253); doc.rect(margin + 3, y - 1, cw - 3, 5.5, 'F') }
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(80, 95, 110)
+            doc.text(k.replace(/_/g, ' ') + ' :', margin + 5, y + 3)
+            doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 55)
+            const vStr = String(v).length > 80 ? String(v).slice(0, 79) + '…' : String(v)
+            doc.text(vStr, margin + 45, y + 3)
+            y += 5.5
+          })
+        }
+
+        if (d.anomalie) {
+          checkPage(8)
+          doc.setFillColor(255, 248, 230); doc.roundedRect(margin + 3, y, cw - 3, 7, 1, 1, 'F')
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(...yellow)
+          doc.text('⚠ ' + d.anomalie, margin + 5, y + 4.5)
+          y += 9
+        }
+        y += 4
       })
     }
-    y += 6
 
-    // ── Schéma du jumeau ──
+    // ══════════════════════════════════════════════
+    // C. CARTE DES PREUVES RELIÉES
+    // ══════════════════════════════════════════════
+    checkPage(14)
+    sectionTitle('C', 'Carte des preuves reliées')
+
     if (twinMapImg) {
-      doc.addPage(); y = 20
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...blue)
-      doc.text('Carte des preuves reliées — Jumeau documentaire', margin, y); y += 5
+      checkPage(80)
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...gray)
-      doc.text('Relations entre les documents du dossier CIR. Lignes violettes = relations directes entre pièces.', margin, y); y += 6
-      const imgW = W - margin * 2
-      const imgH = imgW * 0.52
-      doc.addImage(twinMapImg, 'PNG', margin, y, imgW, imgH)
-      y += imgH + 8
-      if (jumeau?.noeuds) {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(30, 40, 55)
-        doc.text('Nœuds identifiés :', margin, y); y += 5
-        jumeau.noeuds.forEach(n => {
-          if (y > 270) { doc.addPage(); y = 20 }
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(30, 40, 55)
-          doc.text(`• ${n.label} (${n.type}) — Sources : ${(n.sources || []).join(', ')}`, margin + 3, y); y += 5
+      doc.text('Relations entre les documents exploitables du dossier CIR.', margin, y); y += 5
+      const imgH = cw * 0.52
+      doc.addImage(twinMapImg, 'PNG', margin, y, cw, imgH)
+      y += imgH + 6
+    }
+
+    // Rattachements textuels
+    if (jumeau?.noeuds?.length > 0) {
+      checkPage(10)
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(30, 40, 55)
+      doc.text('Nœuds — rattachements au sujet principal :', margin, y); y += 5
+      jumeau.noeuds.forEach(n => {
+        checkPage(5)
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(50, 60, 75)
+        doc.text(`• ${n.label} (${n.type})${n.sources?.length ? ' — ' + n.sources.join(', ') : ''}`, margin + 3, y); y += 5
+      })
+    }
+
+    if (jumeau?.liens?.length > 0) {
+      const lateraux = jumeau.liens.filter(l => l.lateral && l.label)
+      if (lateraux.length > 0) {
+        checkPage(10)
+        y += 3
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(30, 40, 55)
+        doc.text('Relations transversales entre documents exploitables :', margin, y); y += 5
+        lateraux.forEach(l => {
+          checkPage(5)
+          const from = jumeau.noeuds.find(n => n.id === l.from)
+          const to   = jumeau.noeuds.find(n => n.id === l.to)
+          if (!from || !to) return
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(50, 60, 75)
+          doc.text(`• ${from.label}  →  ${to.label}  (${l.label})`, margin + 3, y); y += 5
         })
       }
     }
 
-    // ── 3. Contrôles passés ──
-    if (y > 240) { doc.addPage(); y = 20 }    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...blue)
-    doc.text('3. Contrôles passés', margin, y); y += 7
-    reportData.docsValides.forEach(d => {
-      if (y > 275) { doc.addPage(); y = 20 }
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30, 40, 55)
-      doc.setTextColor(...green); doc.text('✓', margin + 2, y)
-      doc.setTextColor(30, 40, 55); doc.text(`${d.name} — ${d.type || 'Type inconnu'} — Score : ${d.score}%`, margin + 8, y)
-      y += 6
-    })
-    if (reportData.docsValides.length === 0) {
+    if (!twinMapImg && (!jumeau?.noeuds?.length)) {
       doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...gray)
-      doc.text('Aucun document validé.', margin, y); y += 8
+      doc.text('Aucune relation documentaire établie — lancez la vérification de cohérence.', margin, y); y += 8
     }
     y += 4
 
-    // ── 4. Pièces manquantes ──
-    if (reportData.piecesManquantes.length > 0) {
-      if (y > 240) { doc.addPage(); y = 20 }
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...blue)
-      doc.text('4. Pièces à demander au client', margin, y); y += 7
-      reportData.piecesManquantes.forEach(p => {
-        if (y > 275) { doc.addPage(); y = 20 }
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...yellow)
-        doc.text('⚠', margin + 2, y)
-        doc.setTextColor(30, 40, 55); doc.text(`${p} — non fourni`, margin + 8, y); y += 6
+    // ══════════════════════════════════════════════
+    // D. COHÉRENCE AVEC LES RÈGLES CIR
+    // ══════════════════════════════════════════════
+    checkPage(14)
+    sectionTitle('D', 'Cohérence avec les règles CIR')
+
+    const alertesOpen = alerts.filter(a => a.status === 'open')
+    const alertesResolved = alerts.filter(a => a.status === 'resolved')
+    const reglesActives = rules.filter(r => r.active)
+
+    // Résumé
+    checkPage(10)
+    doc.setFillColor(...lightBg); doc.roundedRect(margin, y, cw, 10, 2, 2, 'F')
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30, 40, 55)
+    doc.text(`${reglesActives.length} règles actives  ·  ${alertesOpen.length} anomalie(s) détectée(s)  ·  ${alertesResolved.length} résolu(e)(s)  ·  Score moyen : ${reportData.stats.scoreGlobal}%`, margin + 4, y + 6.5)
+    y += 14
+
+    if (alertesOpen.length > 0 || alertesResolved.length > 0) {
+      tableHeader([
+        { label: '#', x: 0 },
+        { label: 'Règle', x: 10 },
+        { label: 'Constat', x: 55 },
+        { label: 'Gravité', x: 125 },
+        { label: 'Sources', x: 148 },
+      ])
+      alerts.map((a, i) => ({ id: `COH-${String(i+1).padStart(2,'0')}`, ...a })).forEach((a, idx) => {
+        const rowH = 14
+        checkPage(rowH + 2)
+        const aColor = a.status === 'resolved' ? green : a.severity === 'high' ? red : yellow
+        if (idx % 2 === 0) { doc.setFillColor(249, 251, 253); doc.rect(margin, y - 1, cw, rowH, 'F') }
+        doc.setFillColor(...aColor); doc.rect(margin, y - 1, 2, rowH, 'F')
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(60, 70, 85)
+        doc.text(a.id, margin + 2, y + 4)
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 55)
+        const ruleLabel = (a.regle || a.rule || '').slice(0, 24)
+        doc.text(ruleLabel, margin + 12, y + 4)
+        const descLines = doc.splitTextToSize(a.description || '', 68)
+        doc.text(descLines[0], margin + 57, y + 4)
+        if (descLines[1]) doc.text(descLines[1], margin + 57, y + 9)
+        const badge = a.status === 'resolved' ? 'Résolu' : a.severity === 'high' ? 'Critique' : 'Moyen'
+        doc.setTextColor(...aColor); doc.setFont('helvetica', 'bold')
+        doc.text(badge, margin + 127, y + 4)
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(...gray); doc.setFontSize(6.5)
+        doc.text((a.sources || []).join(', ').slice(0, 28), margin + 150, y + 4)
+        y += rowH
       })
       y += 4
+    } else {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...gray)
+      doc.text('Aucune anomalie détectée sur les règles CIR actives.', margin, y); y += 8
     }
 
-    // ── 5. Impact financier ──
+    // Règles non vérifiables
+    if (reportData.stats.nbCas3 > 0) {
+      checkPage(10)
+      doc.setFillColor(255, 248, 230); doc.roundedRect(margin, y, cw, 10, 2, 2, 'F')
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...yellow)
+      doc.text(`⚠  ${reportData.stats.nbCas3} fichier(s) non lisible(s) exclu(s) — certaines règles ne peuvent pas être vérifiées complètement.`, margin + 3, y + 6.5)
+      y += 14
+    }
+
+    // ══════════════════════════════════════════════
+    // E. COHÉRENCE AVEC LES DÉCLARATIONS COPILOT (conditionnelle)
+    // ══════════════════════════════════════════════
+    if (ficheContexte) {
+      checkPage(14)
+      sectionTitle('E', 'Cohérence avec les déclarations Copilot')
+
+      const ficheEntries = Object.entries(ficheContexte).filter(([k]) => k !== '_confirmedAt')
+
+      checkPage(8 + ficheEntries.length * 6)
+      tableHeader([
+        { label: 'Champ déclaré', x: 0 },
+        { label: 'Valeur', x: 55 },
+        { label: 'Cohérence avec les documents', x: 115 },
+      ])
+      ficheEntries.forEach((entry, idx) => {
+        const [k, v] = entry
+        const rowH = 7
+        checkPage(rowH + 2)
+        if (idx % 2 === 0) { doc.setFillColor(249, 251, 253); doc.rect(margin, y - 1, cw, rowH, 'F') }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(60, 80, 120)
+        doc.text(k, margin + 2, y + 4)
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 55)
+        const val = String(v).length > 35 ? String(v).slice(0, 34) + '…' : String(v)
+        doc.text(val, margin + 57, y + 4)
+
+        // Vérification basique de cohérence entre déclaration et documents
+        let coherence = '—'
+        let cohColor  = gray
+        const vLower = String(v).toLowerCase()
+        const kLower = k.toLowerCase()
+
+        if (kLower.includes('projet') || kLower.includes('nom')) {
+          const hasProjet = reportData.docsExploitables.some(d =>
+            d.type === 'Fiche projet' || (d.fields_summary || '').toLowerCase().includes(vLower.slice(0, 10))
+          )
+          coherence = hasProjet ? 'Fiche projet présente' : 'Fiche projet absente'
+          cohColor = hasProjet ? green : yellow
+        } else if (kLower.includes('période') || kLower.includes('date')) {
+          coherence = 'Vérifier dates documents'
+          cohColor  = yellow
+        } else if (kLower.includes('équipe') || kLower.includes('salarié')) {
+          const hasPersonnel = reportData.docsExploitables.some(d => d.type === 'Fiche personnel' || d.type === 'Relevé de temps')
+          coherence = hasPersonnel ? 'Personnel documenté' : 'Pièces personnel manquantes'
+          cohColor  = hasPersonnel ? green : yellow
+        } else if (kLower.includes('prestataire')) {
+          const hasContrat = reportData.docsExploitables.some(d => d.type === 'Contrat' || d.type === 'Facture')
+          coherence = hasContrat ? 'Contrat/facture présent' : 'Pas de contrat/facture'
+          cohColor  = hasContrat ? green : yellow
+        } else {
+          coherence = 'Vérification manuelle'
+          cohColor  = gray
+        }
+
+        doc.setTextColor(...cohColor); doc.setFont('helvetica', 'bold'); doc.setFontSize(7)
+        doc.text(coherence, margin + 117, y + 4)
+        y += rowH
+      })
+
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(...gray)
+      y += 3
+      checkPage(6)
+      doc.text(`Fiche confirmée le ${ficheContexte._confirmedAt || '—'}  ·  Vérification de cohérence indicative — validation manuelle recommandée.`, margin, y); y += 8
+    }
+
+    // ══════════════════════════════════════════════
+    // F. GRILLE DE CONTRÔLE
+    // ══════════════════════════════════════════════
+    checkPage(14)
+    sectionTitle('F', 'Grille de contrôle')
+
+    tableHeader([
+      { label: 'Règle CIR', x: 0 },
+      { label: 'Statut', x: 100 },
+      { label: 'Note du consultant', x: 130 },
+    ])
+
+    reportData.grille.forEach((g, idx) => {
+      checkPage(9)
+      const rowH = 8
+      if (idx % 2 === 0) { doc.setFillColor(249, 251, 253); doc.rect(margin, y - 1, cw, rowH, 'F') }
+      const stColor = g.status === 'Validé' || g.status === 'Résolu' ? green
+        : g.status === 'Anomalie' ? red
+        : g.status === 'À vérifier' ? yellow : gray
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(30, 40, 55)
+      doc.text(g.regle.slice(0, 50), margin + 2, y + 4)
+      doc.setTextColor(...stColor); doc.setFont('helvetica', 'bold')
+      doc.text(g.status, margin + 102, y + 4)
+      doc.setTextColor(...gray); doc.setFont('helvetica', 'normal'); doc.setFontSize(7)
+      doc.text((g.note || '').slice(0, 35), margin + 132, y + 4)
+      y += rowH
+    })
+    y += 6
+
+    // ── Pièces manquantes & Impact financier (compact, bas de grille) ──
+    if (reportData.piecesManquantes.length > 0) {
+      checkPage(10 + reportData.piecesManquantes.length * 5)
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...yellow)
+      doc.text('Pièces non fournies (types requis pour un dossier CIR complet) :', margin, y); y += 5
+      reportData.piecesManquantes.forEach(p => {
+        checkPage(5)
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(80, 70, 30)
+        doc.text(`• ${p}`, margin + 3, y); y += 5
+      })
+      y += 3
+    }
+
     if (reportData.financier.assietteCIR || reportData.financier.cirEstime) {
-      if (y > 230) { doc.addPage(); y = 20 }
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...blue)
-      doc.text('5. Impact indicatif sur le CIR', margin, y); y += 7
-      doc.setFillColor(245, 248, 252); doc.roundedRect(margin, y, W - margin * 2, 22, 2, 2, 'F')
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 40, 55)
+      checkPage(22)
+      doc.setFillColor(...lightBg); doc.roundedRect(margin, y, cw, 20, 2, 2, 'F')
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...blue)
+      doc.text('Impact indicatif sur le CIR', margin + 4, y + 7)
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30, 40, 55)
       if (reportData.financier.totalDepenses)
-        doc.text(`Total dépenses R&D déclaré : ${reportData.financier.totalDepenses} €`, margin + 4, y + 7)
+        doc.text(`Dépenses R&D déclarées : ${reportData.financier.totalDepenses} €`, margin + 4, y + 13)
       if (reportData.financier.assietteCIR)
-        doc.text(`Assiette CIR : ${reportData.financier.assietteCIR} €`, margin + 4, y + 13)
+        doc.text(`Assiette CIR : ${reportData.financier.assietteCIR} €`, margin + 90, y + 13)
       if (reportData.financier.cirEstime) {
         doc.setFont('helvetica', 'bold'); doc.setTextColor(...blue)
-        doc.text(`CIR estimé : ${reportData.financier.cirEstime} €`, margin + 4, y + 19)
+        doc.text(`CIR estimé : ${reportData.financier.cirEstime} €`, margin + 4, y + 18)
       }
-      y += 28
+      y += 25
     }
 
-    // ── 6. Grille ──
-    doc.addPage(); y = 20
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...blue)
-    doc.text('6. Grille de contrôle', margin, y); y += 7
-    doc.setFillColor(20, 35, 55); doc.rect(margin, y, W - margin * 2, 7, 'F')
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(...gray)
-    doc.text('Règle', margin + 2, y + 4.5)
-    doc.text('Statut', margin + 100, y + 4.5)
-    doc.text('Note', margin + 130, y + 4.5)
-    y += 9
-    reportData.grille.forEach((g, idx) => {
-      if (y > 270) { doc.addPage(); y = 20 }
-      if (idx % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(margin, y - 1, W - margin * 2, 8, 'F') }
-      const stColor = g.status === 'Validé' || g.status === 'Résolu' ? green : g.status === 'Anomalie' ? red : g.status === 'À vérifier' ? yellow : gray
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(30, 40, 55)
-      doc.text(g.regle, margin + 2, y + 4)
-      doc.setTextColor(...stColor); doc.text(g.status, margin + 100, y + 4)
-      doc.setTextColor(...gray); doc.text(g.note.slice(0, 35), margin + 130, y + 4)
-      y += 8
-    })
-
-    // ── 7. Décision consultant ──
-    y += 6
-    if (y > 250) { doc.addPage(); y = 20 }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...blue)
-    doc.text('7. Décision du consultant', margin, y); y += 7
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 40, 55)
-    doc.text('Pour chaque signalement : Confirmé, Écarté ou En attente d\'une pièce.', margin, y); y += 6
-    doc.text('Les décisions et leurs motifs sont conservés avec le rapport.', margin, y); y += 10
-    doc.setTextColor(...gray); doc.setFontSize(8)
-    doc.text('Décision finale : ___________________________     Date : _______________', margin, y)
+    // ── Décision consultant ──
+    checkPage(22)
+    y += 4
+    doc.setFillColor(...lightBg); doc.roundedRect(margin, y, cw, 18, 2, 2, 'F')
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(30, 40, 55)
+    doc.text('Décision du consultant', margin + 4, y + 6)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...gray)
+    doc.text('Pour chaque signalement : Confirmé, Écarté ou En attente d\'une pièce.', margin + 4, y + 11)
+    doc.text('Décision finale : ___________________________     Date : _______________', margin + 4, y + 16)
+    y += 22
 
     // ── Footer sur toutes les pages ──
     const pageCount = doc.getNumberOfPages()
@@ -713,7 +939,7 @@ function DossierView({ navigate, client, onBack }) {
       doc.setPage(p)
       doc.setFillColor(240, 243, 246); doc.rect(0, 285, W, 12, 'F')
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...gray)
-      doc.text(`Rapport de cohérence — ${reportData.projet.nom} — ${reportData.meta.client}`, margin, 291)
+      doc.text(`Rapport CIR — ${reportData.projet.nom} — ${reportData.meta.client}`, margin, 291)
       doc.text(`Page ${p} de ${pageCount}`, W - margin, 291, { align: 'right' })
     }
 
@@ -1209,34 +1435,26 @@ function DossierView({ navigate, client, onBack }) {
         {tab === 'report' && (
           <div className="space-y-6">
 
-            {/* ── Rapport de cohérence complet ── */}
+            {/* ── Rapport de cohérence ── */}
             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
               <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
                 <div>
                   <span className="text-white font-semibold">Rapport de cohérence</span>
-                  <p className="text-white/40 text-xs mt-0.5">Rapport complet généré par IA — 7 sections</p>
+                  <p className="text-white/40 text-xs mt-0.5">Synthèse structurée — 5 sections · incluse dans le PDF</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {!fullReport && (
-                    <button onClick={handleGenerateReport} disabled={reportLoading}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-[#00b4d8]/15 text-[#00b4d8] rounded-xl text-sm font-medium hover:bg-[#00b4d8]/25 transition-colors disabled:opacity-50">
-                      {reportLoading ? <><Loader2 size={13} className="animate-spin" /> Génération…</> : '✦ Générer le rapport'}
-                    </button>
-                  )}
-                  <button onClick={downloadPDF}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-xl text-sm font-medium transition-colors">
-                    <Download size={15} /> Télécharger PDF
-                  </button>
-                </div>
+                <button onClick={downloadPDF}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-xl text-sm font-medium transition-colors">
+                  <Download size={15} /> Télécharger PDF
+                </button>
               </div>
 
-              {/* KPIs */}
+              {/* KPIs bilan */}
               <div className="px-6 pt-5 grid grid-cols-4 gap-3">
                 {[
-                  { label: 'Documents',   value: documents.length,  color: 'text-white' },
-                  { label: 'Alertes',     value: totalAlertes,       color: 'text-yellow-400' },
-                  { label: 'Validés',     value: okDocs,             color: 'text-green-400' },
-                  { label: 'Score global', value: documents.filter(d=>d.status==='analysé').length > 0 ? Math.round(documents.filter(d=>d.status==='analysé').reduce((s,d)=>s+(d.score??50),0)/documents.filter(d=>d.status==='analysé').length)+'%' : '—', color: 'text-[#00b4d8]' },
+                  { label: 'Total déposés', value: documents.length, color: 'text-white' },
+                  { label: 'Cas 1 (type connu)', value: documents.filter(d => !d.manualReview && d.status === 'analysé' && d.type !== 'Type inconnu' && d.fields !== 'Extraction échouée').length, color: 'text-green-400' },
+                  { label: 'Cas 2 (type inconnu)', value: unknownTypeDocs.length, color: 'text-yellow-400' },
+                  { label: 'Cas 3 (non lisibles)', value: imageFiles.length + failedDocs.length, color: 'text-red-400' },
                 ].map(s => (
                   <div key={s.label} className="bg-white/5 rounded-xl px-4 py-3 text-center">
                     <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
@@ -1245,36 +1463,140 @@ function DossierView({ navigate, client, onBack }) {
                 ))}
               </div>
 
-              {/* Rapport narratif */}
-              <div className="px-6 py-5">
-                {reportLoading ? (
-                  <div className="flex flex-col items-center gap-3 py-8">
-                    <Loader2 size={24} className="text-[#00b4d8] animate-spin" />
-                    <p className="text-white/50 text-sm">Génération du rapport en cours… (10-20 secondes)</p>
+              <div className="px-6 py-5 space-y-5">
+
+                {/* A — Bilan des dépôts */}
+                <div>
+                  <h3 className="text-[#00b4d8] font-bold text-xs uppercase tracking-wide mb-2">A · Bilan des dépôts</h3>
+                  <div className="space-y-1.5">
+                    <div className="flex items-start gap-2 text-sm">
+                      <span className="text-green-400 font-bold w-14 shrink-0">Cas 1</span>
+                      <span className="text-white/60">{documents.filter(d => !d.manualReview && d.status === 'analysé' && d.type !== 'Type inconnu' && d.fields !== 'Extraction échouée').length} document(s) — extraction réussie, type reconnu</span>
+                    </div>
+                    <div className="flex items-start gap-2 text-sm">
+                      <span className="text-yellow-400 font-bold w-14 shrink-0">Cas 2</span>
+                      <span className="text-white/60">{unknownTypeDocs.length} document(s) — extraction réussie, type non reconnu{unknownTypeDocs.length > 0 ? ` (${unknownTypeDocs.map(d => d.name).join(', ')})` : ''}</span>
+                    </div>
+                    <div className="flex items-start gap-2 text-sm">
+                      <span className="text-red-400 font-bold w-14 shrink-0">Cas 3</span>
+                      <span className="text-white/60">{imageFiles.length + failedDocs.length} document(s) — non lisibles, exclus de l'analyse{(imageFiles.length + failedDocs.length) > 0 ? ` : ${[...imageFiles, ...failedDocs].map(d => d.name).join(', ')}` : ''}</span>
+                    </div>
                   </div>
-                ) : fullReport ? (
-                  <div className="prose prose-invert max-w-none">
-                    {fullReport.split('\n').map((line, i) => {
-                      if (!line.trim()) return <div key={i} className="h-2" />
-                      if (/^\d+\.\s+[A-ZÀÉÈÊ]/.test(line.trim())) {
-                        return <h3 key={i} className="text-[#00b4d8] font-bold text-sm uppercase tracking-wide mt-4 mb-2">{line.trim()}</h3>
-                      }
-                      if (line.trim().startsWith('-') || line.trim().startsWith('•')) {
-                        return <div key={i} className="flex gap-2 text-sm text-white/70 leading-relaxed mb-1"><span className="text-[#00b4d8] shrink-0">•</span><span>{line.trim().replace(/^[-•]\s*/, '')}</span></div>
-                      }
-                      return <p key={i} className="text-white/70 text-sm leading-relaxed mb-2">{line}</p>
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 space-y-3">
-                    <p className="text-white/40 text-sm">Cliquez sur "Générer le rapport" pour obtenir une analyse complète en 7 sections :</p>
-                    <div className="grid grid-cols-2 gap-2 max-w-md mx-auto text-xs text-white/30">
-                      {["1. Synthèse exécutive","2. Déclarations du client","3. Analyse des documents","4. Structure du dossier","5. Alertes et points d'attention","6. Pièces manquantes","7. Conclusion"].map(s => (
-                        <div key={s} className="bg-white/5 rounded-lg px-3 py-2 text-left">{s}</div>
+                </div>
+
+                {/* B — Informations extraites */}
+                <div>
+                  <h3 className="text-[#00b4d8] font-bold text-xs uppercase tracking-wide mb-2">B · Informations extraites par document</h3>
+                  {documents.filter(d => !d.manualReview && d.status === 'analysé' && d.fields !== 'Extraction échouée').length === 0 ? (
+                    <p className="text-white/30 text-sm italic">Aucun document exploitable.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {documents.filter(d => !d.manualReview && d.status === 'analysé' && d.fields !== 'Extraction échouée').map((d, i) => (
+                        <div key={i} className={`rounded-xl px-4 py-3 border ${d.type === 'Type inconnu' ? 'bg-yellow-500/5 border-yellow-500/15' : 'bg-green-500/5 border-green-500/10'}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-white text-sm font-medium truncate">{d.name}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ml-2 ${d.type === 'Type inconnu' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-green-500/15 text-green-400'}`}>
+                              {d.type || 'Type inconnu'}
+                            </span>
+                          </div>
+                          <p className="text-white/50 text-xs leading-relaxed">{d.fields_summary || d.fields || '—'}</p>
+                          {d.entites && Object.entries(d.entites).filter(([, v]) => v).length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {Object.entries(d.entites).filter(([, v]) => v).slice(0, 5).map(([k, v]) => (
+                                <span key={k} className="text-xs bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white/50">
+                                  <span className="text-white/30">{k.replace(/_/g, ' ')} :</span> {String(v).slice(0, 30)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* C — Carte des preuves */}
+                <div>
+                  <h3 className="text-[#00b4d8] font-bold text-xs uppercase tracking-wide mb-2">C · Carte des preuves reliées</h3>
+                  {jumeau?.noeuds?.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {jumeau.noeuds.map((n, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm text-white/60">
+                          <span className="w-2 h-2 rounded-full bg-[#00b4d8] shrink-0" />
+                          <span>{n.label}</span>
+                          {n.type && <span className="text-white/25 text-xs">({n.type})</span>}
+                          {n.sources?.length > 0 && <span className="text-white/25 text-xs ml-auto">{n.sources.join(', ')}</span>}
+                        </div>
+                      ))}
+                      {jumeau.liens?.filter(l => l.lateral && l.label).length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-white/5 space-y-1">
+                          <p className="text-white/30 text-xs">Relations transversales :</p>
+                          {jumeau.liens.filter(l => l.lateral && l.label).map((l, i) => {
+                            const from = jumeau.noeuds.find(n => n.id === l.from)
+                            const to   = jumeau.noeuds.find(n => n.id === l.to)
+                            if (!from || !to) return null
+                            return (
+                              <div key={i} className="text-xs text-white/50">
+                                {from.label} <span className="text-[#00b4d8]">→</span> {to.label} <span className="text-white/25">({l.label})</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-white/30 text-sm italic">Lancez la vérification de cohérence pour établir la carte des preuves.</p>
+                  )}
+                </div>
+
+                {/* D — Cohérence CIR */}
+                <div>
+                  <h3 className="text-[#00b4d8] font-bold text-xs uppercase tracking-wide mb-2">D · Cohérence avec les règles CIR</h3>
+                  {alerts.length === 0 && (imageFiles.length + failedDocs.length) === 0 ? (
+                    <p className="text-white/30 text-sm italic">Lancez la vérification depuis l'onglet Documents pour voir les résultats.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {alerts.filter(a => a.status === 'open').length === 0 && alerts.length > 0 && (
+                        <div className="flex items-center gap-2 text-sm text-green-400">
+                          <CheckCircle size={13} className="shrink-0" />
+                          <span>Aucune anomalie — toutes les règles vérifiées sont cohérentes.</span>
+                        </div>
+                      )}
+                      {alerts.filter(a => a.status === 'open').map((a, i) => (
+                        <div key={i} className={`flex items-start gap-2 text-sm rounded-lg px-3 py-2 ${a.severity === 'high' ? 'bg-red-500/8 text-red-400' : 'bg-yellow-500/8 text-yellow-400'}`}>
+                          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-medium">{a.regle || a.rule}</span>
+                            <span className="text-white/40 ml-2 text-xs">{a.description}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {(imageFiles.length + failedDocs.length) > 0 && (
+                        <div className="flex items-start gap-2 text-sm bg-orange-500/8 text-orange-400 rounded-lg px-3 py-2">
+                          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                          <span>{imageFiles.length + failedDocs.length} fichier(s) non lisible(s) — certaines règles ne peuvent pas être vérifiées.</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* E — Copilot (conditionnelle) */}
+                {ficheContexte && (
+                  <div>
+                    <h3 className="text-[#00b4d8] font-bold text-xs uppercase tracking-wide mb-2">E · Cohérence avec les déclarations Copilot</h3>
+                    <div className="bg-[#00b4d8]/5 border border-[#00b4d8]/15 rounded-xl px-4 py-3 space-y-2">
+                      {Object.entries(ficheContexte).filter(([k]) => k !== '_confirmedAt').map(([k, v]) => (
+                        <div key={k} className="flex gap-2 text-sm">
+                          <span className="text-white/35 w-28 shrink-0">{k} :</span>
+                          <span className="text-white/70">{v}</span>
+                        </div>
+                      ))}
+                      <p className="text-white/25 text-xs pt-1 border-t border-white/5">Confirmée le {ficheContexte._confirmedAt} · Vérification de cohérence avec les documents incluse dans le PDF.</p>
                     </div>
                   </div>
                 )}
+
               </div>
             </div>
 

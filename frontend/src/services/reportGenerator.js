@@ -132,17 +132,45 @@ export function buildReportData(client, documents, alertes, fiche, grilleStatus,
   const equipe       = fiche?.Équipe || fiche?.equipe || '—'
   const prestataires = fiche?.Prestataires || fiche?.prestataires || 'Aucun'
 
-  const docsAnalyses   = documents.filter(d => d.status === 'analysé')
-  const docsValides    = docsAnalyses.filter(d => (d.score ?? 0) >= 70)
-  const docsEchoues    = documents.filter(d => d.type === 'Type inconnu' || d.fields === 'Extraction échouée')
+  // Cas 1 : extraction réussie + type connu
+  const docsValides = documents.filter(d =>
+    !d.manualReview &&
+    d.status === 'analysé' &&
+    d.type !== 'Type inconnu' &&
+    d.fields !== 'Extraction échouée' &&
+    d.fields_summary !== 'Extraction échouée' &&
+    (d.score ?? 0) >= 70
+  )
+  // Cas 2 : extraction réussie + type inconnu
+  const docsInconnus = documents.filter(d =>
+    !d.manualReview &&
+    d.status === 'analysé' &&
+    d.type === 'Type inconnu' &&
+    d.fields !== 'Extraction échouée' &&
+    d.fields_summary !== 'Extraction échouée'
+  )
+  // Cas 3 : non lisibles (images + extraction échouée)
+  const docsEchoues = documents.filter(d =>
+    d.manualReview === true ||
+    d.fields === 'Extraction échouée' ||
+    d.fields_summary === 'Extraction échouée'
+  )
+  // Tous les documents exploitables (Cas 1 + Cas 2)
+  const docsExploitables = documents.filter(d =>
+    !d.manualReview &&
+    d.status === 'analysé' &&
+    d.fields !== 'Extraction échouée' &&
+    d.fields_summary !== 'Extraction échouée'
+  )
+
   const alertesOpen    = alertes.filter(a => a.status === 'open')
 
   const typesPresents  = new Set(documents.map(d => d.type).filter(t => t && t !== 'Type inconnu'))
   const typesRequis    = ['Fiche projet', 'Relevé de temps', 'Fiche personnel', 'Bulletin de paie', 'Contrat', 'Facture', 'Rapport technique', 'Tableau financier']
   const piecesManquantes = typesRequis.filter(t => !typesPresents.has(t))
 
-  const scoreGlobal = docsAnalyses.length > 0
-    ? Math.round(docsAnalyses.reduce((s, d) => s + (d.score ?? 50), 0) / docsAnalyses.length)
+  const scoreGlobal = docsExploitables.length > 0
+    ? Math.round(docsExploitables.reduce((s, d) => s + (d.score ?? 50), 0) / docsExploitables.length)
     : 0
 
   const tabFinancier   = documents.find(d => d.type === 'Tableau financier')
@@ -169,13 +197,25 @@ export function buildReportData(client, documents, alertes, fiche, grilleStatus,
     projet: { nom: projetNom, periode, equipe, prestataires },
     fiche,
     stats: {
-      nbDocs: documents.length, nbAnalyses: docsAnalyses.length,
-      nbValides: docsValides.length, nbEchoues: docsEchoues.length,
-      nbAlertes: alertesOpen.length, scoreGlobal,
+      nbDocs: documents.length,
+      nbCas1: docsValides.length,
+      nbCas2: docsInconnus.length,
+      nbCas3: docsEchoues.length,
+      nbExploitables: docsExploitables.length,
+      nbAlertes: alertesOpen.length,
+      nbAlertesHigh: alertesOpen.filter(a => a.severity === 'high').length,
+      nbAlertesMedium: alertesOpen.filter(a => a.severity !== 'high').length,
+      scoreGlobal,
+      // compat anciens champs
+      nbAnalyses: docsExploitables.length,
+      nbValides: docsValides.length,
+      nbEchoues: docsEchoues.length,
     },
     alertes:          alertes.map((a, i) => ({ id: `COH-${String(i+1).padStart(2,'0')}`, ...a })),
     docsValides,
+    docsInconnus,
     docsEchoues,
+    docsExploitables,
     piecesManquantes,
     financier:        { assietteCIR, cirEstime, totalDepenses },
     grille:           grilleData,
