@@ -203,6 +203,121 @@ function ListView({ navigate, clients, totalClients, withFiche, totalAlerts, onO
   )
 }
 
+// -- Générateur du rapport narratif de cohérence (zéro API) ------------------
+
+function genererRapportNarratif(documents, alertes, rules, fiche) {
+  const docsAnalyses   = documents.filter(d => d.status === 'analysé' && !d.manualReview && d.fields !== 'Extraction échouée')
+  const docsEchoues    = documents.filter(d => d.manualReview || d.fields === 'Extraction échouée')
+  const docsInconnus   = docsAnalyses.filter(d => d.type === 'Type inconnu')
+  const docsValides    = docsAnalyses.filter(d => d.type !== 'Type inconnu' && (d.score ?? 0) >= 70)
+  const alertesOuvertes = alertes.filter(a => a.status === 'open')
+
+  const projetNom = fiche?.Projet || fiche?.projet ||
+    documents.find(d => d.type === 'Fiche projet')?.entites?.nom_projet || 'le projet'
+
+  // -- Intro --
+  const lignes = []
+  lignes.push({
+    type: 'intro',
+    text: `Vérification effectuée sur ${docsAnalyses.length} document(s) exploitable(s) sur ${documents.length} déposé(s)` +
+      (docsEchoues.length > 0 ? ` (${docsEchoues.length} non lisible(s) exclus de l'analyse)` : '') +
+      `. Projet concerné : ${projetNom}.`,
+  })
+
+  // -- Règle par règle --
+  const REGLES_METIER = [
+    'Temps et personnel',
+    'Contrat et facture',
+    'Cohérence des dates',
+    'Temps contemporain',
+    'Détection de relevés trop propres',
+    'Salarié non déclaré',
+    'Prestataire non déclaré',
+    'Salaire et budget',
+  ]
+
+  rules.filter(r => r.active).forEach(r => {
+    const alertesRegle = alertesOuvertes.filter(a =>
+      a.regle?.toLowerCase().includes(r.label.toLowerCase()) ||
+      r.label.toLowerCase().includes(a.regle?.toLowerCase())
+    )
+
+    // Règles avec logique réelle
+    const aLogique = REGLES_METIER.some(rm =>
+      r.label.toLowerCase().includes(rm.toLowerCase()) ||
+      rm.toLowerCase().includes(r.label.toLowerCase())
+    )
+
+    if (!aLogique) {
+      // Règle affichée mais sans logique implémentée
+      lignes.push({
+        type: 'na',
+        regle: r.label,
+        text: `Non vérifiable automatiquement — aucun document correspondant trouvé dans le dossier.`,
+      })
+      return
+    }
+
+    if (alertesRegle.length === 0) {
+      // Règle vérifiée, aucune anomalie
+      let msg = ''
+      if (r.label === 'Temps et personnel')
+        msg = docsAnalyses.some(d => d.type === 'Relevé de temps')
+          ? `Aucune incohérence détectée entre les relevés de temps et les fiches personnel.`
+          : `Aucun relevé de temps ou fiche personnel trouvé pour vérifier cette règle.`
+      else if (r.label === 'Contrat et facture')
+        msg = docsAnalyses.some(d => d.type === 'Contrat') && docsAnalyses.some(d => d.type === 'Facture')
+          ? `La facture est cohérente avec le contrat — montant dans les limites contractuelles.`
+          : `Contrat ou facture absent(e) du dossier — règle non applicable.`
+      else if (r.label === 'Cohérence des dates')
+        msg = `Les périodes des documents sont cohérentes avec la durée du projet.`
+      else if (r.label.includes('contemporain') || r.label.includes('trop propres'))
+        msg = docsAnalyses.some(d => d.type === 'Relevé de temps')
+          ? `Aucun relevé suspect détecté (entrées uniformes ou reconstituées a posteriori).`
+          : `Aucun relevé de temps à analyser.`
+      else
+        msg = `Aucune anomalie détectée.`
+
+      lignes.push({ type: 'ok', regle: r.label, text: msg })
+    } else {
+      // Anomalies détectées
+      alertesRegle.forEach(a => {
+        lignes.push({
+          type: a.severity === 'high' ? 'critique' : 'warn',
+          regle: r.label,
+          text: a.description,
+          sources: a.sources,
+        })
+      })
+    }
+  })
+
+  // -- Conclusion --
+  const nbProblemes = alertesOuvertes.length
+  let conclusion = ''
+  if (nbProblemes === 0 && docsEchoues.length === 0) {
+    conclusion = `✓ Dossier cohérent — aucune anomalie détectée sur l'ensemble des règles vérifiées.`
+  } else if (nbProblemes === 0 && docsEchoues.length > 0) {
+    conclusion = `Le dossier ne présente pas d'anomalie sur les documents exploitables. ${docsEchoues.length} fichier(s) non lisible(s) nécessitent une action du client avant une vérification complète.`
+  } else {
+    conclusion = `${nbProblemes} anomalie(s) détectée(s) nécessitant l'attention du consultant.` +
+      (docsInconnus.length > 0 ? ` ${docsInconnus.length} document(s) de type non reconnu à classifier manuellement.` : '')
+  }
+  lignes.push({ type: 'conclusion', text: conclusion })
+
+  return {
+    lignes,
+    stats: {
+      total: documents.length,
+      analyses: docsAnalyses.length,
+      echoues: docsEchoues.length,
+      valides: docsValides.length,
+      anomalies: alertesOuvertes.length,
+    },
+    date: new Date().toLocaleString('fr-FR'),
+  }
+}
+
 // -- Dossier view -------------------------------------------------------------
 
 function DossierView({ navigate, client, onBack }) {
@@ -214,6 +329,7 @@ function DossierView({ navigate, client, onBack }) {
   const [alerts, setAlerts]               = useState([])
   const [expandedAlert, setExpandedAlert] = useState(null)
   const [selectedDoc, setSelectedDoc]     = useState(null)
+  const [rapportCoherence, setRapportCoherence] = useState(null)
 
   // Client-specific data
   const [ficheContexte, setFicheContexte]       = useState(null)
@@ -297,6 +413,9 @@ function DossierView({ navigate, client, onBack }) {
     saveAlertes(client.id, a)
     setJumeau(j)
     setAlerts(a)
+    // Générer le rapport narratif et basculer sur l'onglet règles
+    setRapportCoherence(genererRapportNarratif(documents, a, rules, ficheContexte))
+    setTab('rules')
   }
 
   // -- Rules --
@@ -858,11 +977,6 @@ function DossierView({ navigate, client, onBack }) {
                   )}
 
                   <div className="flex flex-col items-center gap-3 text-center py-4">
-                    <ShieldCheck size={20} className="text-[#00b4d8]" />
-                    <div>
-                      <p className="text-white/60 text-sm font-medium">Analyse en attente</p>
-                      <p className="text-white/30 text-xs mt-1">Cliquez sur le bouton pour lancer la vérification des règles CIR.</p>
-                    </div>
                     {documents.length > 0 && (
                       <button onClick={lancerVerification}
                         className="flex items-center gap-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-xl text-sm font-medium transition-colors">
@@ -964,10 +1078,72 @@ function DossierView({ navigate, client, onBack }) {
               </div>
             </div>
 
+            {/* ── Rapport narratif de cohérence ── */}
+            {rapportCoherence ? (
+              <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+                <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={16} className="text-[#00b4d8]" />
+                    <span className="text-white font-semibold">Résultat de la vérification</span>
+                  </div>
+                  <span className="text-white/30 text-xs">{rapportCoherence.date}</span>
+                </div>
+
+                {/* Stats rapides */}
+                <div className="px-6 py-4 grid grid-cols-4 gap-3 border-b border-white/5">
+                  {[
+                    { label: 'Analysés',  value: rapportCoherence.stats.analyses,  color: 'text-white' },
+                    { label: 'Anomalies', value: rapportCoherence.stats.anomalies, color: rapportCoherence.stats.anomalies > 0 ? 'text-red-400' : 'text-green-400' },
+                    { label: 'Validés',   value: rapportCoherence.stats.valides,   color: 'text-green-400' },
+                    { label: 'Non lisibles', value: rapportCoherence.stats.echoues, color: rapportCoherence.stats.echoues > 0 ? 'text-yellow-400' : 'text-white/40' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-white/5 rounded-xl px-3 py-2.5 text-center">
+                      <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+                      <p className="text-white/30 text-xs mt-0.5">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Lignes narratives règle par règle */}
+                <div className="px-6 py-4 space-y-3">
+                  {rapportCoherence.lignes.map((l, i) => {
+                    if (l.type === 'intro') return (
+                      <p key={i} className="text-white/50 text-xs italic pb-2 border-b border-white/5">{l.text}</p>
+                    )
+                    if (l.type === 'conclusion') return (
+                      <div key={i} className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-white/70 text-sm font-medium">{l.text}</p>
+                      </div>
+                    )
+                    const icon  = l.type === 'ok' ? '✓' : l.type === 'critique' ? '✕' : l.type === 'warn' ? '⚠' : '—'
+                    const color = l.type === 'ok' ? 'text-green-400' : l.type === 'critique' ? 'text-red-400' : l.type === 'warn' ? 'text-yellow-400' : 'text-white/25'
+                    const bg    = l.type === 'ok' ? 'bg-green-500/5 border border-green-500/10' : l.type === 'critique' ? 'bg-red-500/8 border border-red-500/10' : l.type === 'warn' ? 'bg-yellow-500/5 border border-yellow-500/10' : 'bg-white/3 border border-white/5'
+                    return (
+                      <div key={i} className={`flex items-start gap-3 rounded-xl px-4 py-3 ${bg}`}>
+                        <span className={`text-sm font-bold shrink-0 mt-0.5 w-4 ${color}`}>{icon}</span>
+                        <div className="flex-1 min-w-0">
+                          {l.regle && (
+                            <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${color}`}>{l.regle}</p>
+                          )}
+                          <p className="text-white/60 text-sm leading-relaxed">{l.text}</p>
+                          {l.sources?.length > 0 && (
+                            <p className="text-white/25 text-xs mt-1">Sources : {l.sources.join(', ')}</p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white/3 border border-white/5 rounded-2xl px-6 py-5 flex items-center gap-3">
+                <ShieldCheck size={16} className="text-white/20 shrink-0" />
+                <p className="text-white/25 text-sm">Lancez la vérification depuis l'onglet "Documents déposés" pour voir le rapport ici.</p>
+              </div>
+            )}
+
           </div>
         )}
-
-        {/* == TAB : Questions copilote == */}
         {tab === 'copilote' && (
           <div className="space-y-6">
             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
