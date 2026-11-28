@@ -558,89 +558,78 @@ function DossierView({ navigate, client, onBack }) {
     y += 24
 
     // ══════════════════════════════════════════════
-    // A. BILAN DES DÉPÔTS
+    // A. BILAN DES DÉPÔTS (Cas 1 / 2 / 3) — synthèse rédigée
     // ══════════════════════════════════════════════
     sectionTitle('A', 'Bilan des dépôts')
 
-    // Tableau récap
-    tableHeader([
-      { label: 'Cas', x: 0, w: 15 },
-      { label: 'Description', x: 15, w: 85 },
-      { label: 'Nb', x: 100, w: 10 },
-      { label: 'Fichiers', x: 115, w: 65 },
-    ])
+    // Synthèse narrative
+    checkPage(20)
+    doc.setFillColor(...lightBg); doc.roundedRect(margin, y, cw, 14, 2, 2, 'F')
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30, 40, 55)
+    const bilanParts = []
+    if (reportData.stats.nbCas1 > 0) bilanParts.push(`${reportData.stats.nbCas1} document(s) analysés avec succès, type reconnu (Cas 1)`)
+    if (reportData.stats.nbCas2 > 0) bilanParts.push(`${reportData.stats.nbCas2} document(s) traités, type non identifié — classification manuelle requise (Cas 2)`)
+    if (reportData.stats.nbCas3 > 0) bilanParts.push(`${reportData.stats.nbCas3} fichier(s) illisibles ou extraction échouée, exclus de l'analyse (Cas 3)`)
+    const bilanNarr = reportData.stats.nbDocs === 0
+      ? 'Aucun document déposé dans ce dossier.'
+      : `Sur les ${reportData.stats.nbDocs} pièce(s) déposées : ${bilanParts.join(' ; ')}.`
+    const bilanLines = doc.splitTextToSize(bilanNarr, cw - 6)
+    doc.text(bilanLines, margin + 3, y + 5)
+    y += Math.max(14, bilanLines.length * 5 + 4)
+    y += 3
 
+    // Lignes colorées par cas
     const bilanRows = [
-      {
-        cas: 'Cas 1', desc: 'Extraction réussie — type reconnu', nb: reportData.stats.nbCas1,
-        color: green,
-        files: reportData.docsValides.map(d => d.name),
-      },
-      {
-        cas: 'Cas 2', desc: 'Extraction réussie — type non reconnu', nb: reportData.stats.nbCas2,
-        color: yellow,
-        files: reportData.docsInconnus.map(d => d.name),
-      },
-      {
-        cas: 'Cas 3', desc: 'Extraction échouée / non lisible (exclus de l\'analyse)', nb: reportData.stats.nbCas3,
-        color: red,
-        files: reportData.docsEchoues.map(d => d.name),
-      },
-    ]
+      { cas: 'Cas 1', desc: 'Extraction réussie — type reconnu', nb: reportData.stats.nbCas1, color: green, files: reportData.docsValides.map(d => d.name) },
+      { cas: 'Cas 2', desc: 'Extraction réussie — type non reconnu', nb: reportData.stats.nbCas2, color: yellow, files: reportData.docsInconnus.map(d => d.name) },
+      { cas: 'Cas 3', desc: 'Extraction échouée / non lisible', nb: reportData.stats.nbCas3, color: red, files: reportData.docsEchoues.map(d => d.name) },
+    ].filter(r => r.nb > 0)
 
-    bilanRows.forEach((row, idx) => {
-      checkPage(12)
+    bilanRows.forEach(row => {
+      checkPage(14)
       const rowH = 10
-      if (idx % 2 === 0) { doc.setFillColor(249, 251, 253); doc.rect(margin, y - 1, cw, rowH, 'F') }
-      doc.setFillColor(...row.color); doc.rect(margin, y - 1, 2, rowH, 'F')
+      doc.setFillColor(249, 251, 253); doc.roundedRect(margin, y, cw, rowH, 1, 1, 'F')
+      doc.setFillColor(...row.color); doc.rect(margin, y, 2, rowH, 'F')
       doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...row.color)
-      doc.text(row.cas, margin + 2, y + 4.5)
+      doc.text(row.cas, margin + 5, y + 6)
       doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 55)
-      doc.text(row.desc, margin + 17, y + 4.5)
+      doc.text(row.desc, margin + 22, y + 6)
       doc.setFont('helvetica', 'bold'); doc.setTextColor(...row.color)
-      doc.text(String(row.nb), margin + 102, y + 4.5)
+      doc.text(String(row.nb), margin + cw - 15, y + 6)
       doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(...gray)
-      const fileList = row.files.length > 0 ? row.files.join(', ').slice(0, 65) : '—'
-      doc.text(fileList, margin + 117, y + 4.5)
-      y += rowH
+      const fileList = row.files.length > 0 ? row.files.join(', ').slice(0, 80) : '—'
+      const fLines = doc.splitTextToSize(fileList, cw - 85)
+      doc.text(fLines[0] || '', margin + 22, y + 9.5)
+      y += rowH + 3
     })
-    y += 4
-
-    // Cas 3 — liste détaillée si présent
-    if (reportData.docsEchoues.length > 0) {
-      checkPage(10)
-      doc.setFillColor(255, 240, 240); doc.roundedRect(margin, y, cw, 6 + reportData.docsEchoues.length * 5.5, 2, 2, 'F')
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...red)
-      doc.text('Fichiers Cas 3 (exclus de l\'analyse automatique) :', margin + 3, y + 4); y += 7
-      reportData.docsEchoues.forEach(d => {
-        checkPage(6)
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(80, 30, 30)
-        doc.text(`• ${d.name}${d.manualReview ? ' (image/scan)' : ' (extraction échouée)'}`, margin + 5, y); y += 5.5
-      })
-      y += 3
-    }
+    y += 2
 
     // ══════════════════════════════════════════════
-    // B. INFORMATIONS EXTRAITES PAR DOCUMENT (Cas 1 + Cas 2)
+    // B. SYNTHÈSE DES INFORMATIONS EXTRAITES (Cas 1 & 2) — rédigée par document
     // ══════════════════════════════════════════════
     checkPage(14)
-    sectionTitle('B', 'Informations extraites par document (Cas 1 et Cas 2)')
+    sectionTitle('B', 'Synthèse des informations extraites (Cas 1 & 2)')
 
     if (reportData.docsExploitables.length === 0) {
       doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...gray)
       doc.text('Aucun document exploitable dans ce dossier.', margin, y); y += 10
     } else {
-      reportData.docsExploitables.forEach((d, idx) => {
+      reportData.docsExploitables.forEach((d) => {
         const isCas2 = d.type === 'Type inconnu'
+        // Construire une phrase de synthèse
+        const synthese = d.fields_summary || d.fields
         const entites = d.entites
           ? Object.entries(d.entites).filter(([, v]) => v !== null && v !== undefined && v !== '')
           : []
-        const fieldsText = d.fields_summary || d.fields || '—'
-        const nbLines = Math.max(1, entites.length, 1)
-        checkPage(10 + nbLines * 5)
+        const syntheseText = synthese && synthese !== '—'
+          ? synthese
+          : entites.length > 0
+            ? entites.map(([k, v]) => `${k.replace(/_/g, ' ')} : ${v}`).join(' · ')
+            : 'Aucune information structurée extraite.'
 
-        // En-tête du document
         const docColor = isCas2 ? yellow : green
+        checkPage(16)
+        // En-tête
         doc.setFillColor(isCas2 ? 255 : 240, isCas2 ? 248 : 252, isCas2 ? 230 : 240)
         doc.roundedRect(margin, y, cw, 8, 1, 1, 'F')
         doc.setFillColor(...docColor); doc.rect(margin, y, 2, 8, 'F')
@@ -650,31 +639,13 @@ function DossierView({ navigate, client, onBack }) {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...docColor)
         doc.text(casLabel, margin + cw - 2, y + 5, { align: 'right' })
         y += 10
-
-        // Résumé
-        if (fieldsText && fieldsText !== '—') {
-          checkPage(8)
-          doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(60, 70, 85)
-          const rLines = doc.splitTextToSize(fieldsText, cw - 6)
-          doc.text(rLines, margin + 3, y)
-          y += rLines.length * 4.5 + 2
-        }
-
-        // Entités
-        if (entites.length > 0) {
-          checkPage(6)
-          entites.forEach(([k, v], ei) => {
-            checkPage(5)
-            if (ei % 2 === 0) { doc.setFillColor(249, 251, 253); doc.rect(margin + 3, y - 1, cw - 3, 5.5, 'F') }
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(80, 95, 110)
-            doc.text(k.replace(/_/g, ' ') + ' :', margin + 5, y + 3)
-            doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 55)
-            const vStr = String(v).length > 80 ? String(v).slice(0, 79) + '…' : String(v)
-            doc.text(vStr, margin + 45, y + 3)
-            y += 5.5
-          })
-        }
-
+        // Synthèse rédigée (pas de liste champ/valeur)
+        checkPage(10)
+        const synLines = doc.splitTextToSize(syntheseText, cw - 6)
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(50, 60, 75)
+        doc.text(synLines, margin + 3, y)
+        y += synLines.length * 4.5 + 2
+        // Anomalie si présente
         if (d.anomalie) {
           checkPage(8)
           doc.setFillColor(255, 248, 230); doc.roundedRect(margin + 3, y, cw - 3, 7, 1, 1, 'F')
@@ -682,44 +653,52 @@ function DossierView({ navigate, client, onBack }) {
           doc.text('⚠ ' + d.anomalie, margin + 5, y + 4.5)
           y += 9
         }
-        y += 4
+        y += 3
       })
     }
 
     // ══════════════════════════════════════════════
-    // C. CARTE DES PREUVES RELIÉES
+    // C. CARTE DES PREUVES RELIÉES — explication narrative
     // ══════════════════════════════════════════════
     checkPage(14)
     sectionTitle('C', 'Carte des preuves reliées')
 
+    // Synthèse narrative du réseau documentaire
+    checkPage(20)
+    const nbNoeuds = (jumeau?.noeuds || []).filter(n => n.type !== 'projet').length
+    const nbLiensLat = (jumeau?.liens || []).filter(l => l.lateral && l.label).length
+    const projetLabel = ficheContexte?.Projet || ficheContexte?.projet || 'le projet central'
+    let carteNarr = `Le dossier regroupe ${nbNoeuds} pièce(s) rattachée(s) à « ${projetLabel} ».`
+    if (nbLiensLat > 0)
+      carteNarr += ` Ces documents entretiennent ${nbLiensLat} relation(s) transversale(s) établies automatiquement.`
+    else if (nbNoeuds > 0)
+      carteNarr += ' Aucun lien transversal n\'a été détecté entre les documents.'
+    else
+      carteNarr = 'Aucune relation documentaire établie — lancez la vérification de cohérence.'
+    if (reportData.stats.nbCas3 > 0)
+      carteNarr += ` Les ${reportData.stats.nbCas3} fichier(s) non lisibles (Cas 3) sont exclus de cette carte.`
+
+    doc.setFillColor(...lightBg); doc.roundedRect(margin, y, cw, 14, 2, 2, 'F')
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30, 40, 55)
+    const carteLines = doc.splitTextToSize(carteNarr, cw - 6)
+    doc.text(carteLines, margin + 3, y + 5)
+    y += Math.max(14, carteLines.length * 5 + 4)
+    y += 3
+
     if (twinMapImg) {
       checkPage(80)
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...gray)
-      doc.text('Relations entre les documents exploitables du dossier CIR.', margin, y); y += 5
       const imgH = cw * 0.52
       doc.addImage(twinMapImg, 'PNG', margin, y, cw, imgH)
       y += imgH + 6
     }
 
-    // Rattachements textuels
-    if (jumeau?.noeuds?.length > 0) {
-      checkPage(10)
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(30, 40, 55)
-      doc.text('Nœuds — rattachements au sujet principal :', margin, y); y += 5
-      jumeau.noeuds.forEach(n => {
-        checkPage(5)
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(50, 60, 75)
-        doc.text(`• ${n.label} (${n.type})${n.sources?.length ? ' — ' + n.sources.join(', ') : ''}`, margin + 3, y); y += 5
-      })
-    }
-
+    // Relations transversales rédigées
     if (jumeau?.liens?.length > 0) {
       const lateraux = jumeau.liens.filter(l => l.lateral && l.label)
       if (lateraux.length > 0) {
         checkPage(10)
-        y += 3
         doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(30, 40, 55)
-        doc.text('Relations transversales entre documents exploitables :', margin, y); y += 5
+        doc.text('Relations entre documents exploitables :', margin, y); y += 5
         lateraux.forEach(l => {
           checkPage(5)
           const from = jumeau.noeuds.find(n => n.id === l.from)
@@ -730,66 +709,87 @@ function DossierView({ navigate, client, onBack }) {
         })
       }
     }
-
-    if (!twinMapImg && (!jumeau?.noeuds?.length)) {
-      doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...gray)
-      doc.text('Aucune relation documentaire établie — lancez la vérification de cohérence.', margin, y); y += 8
-    }
     y += 4
 
     // ══════════════════════════════════════════════
-    // D. COHÉRENCE AVEC LES RÈGLES CIR
+    // D. COHÉRENCE CIR / POINTS DE VIGILANCE / GRILLE DE CONTRÔLE
     // ══════════════════════════════════════════════
     checkPage(14)
-    sectionTitle('D', 'Cohérence avec les règles CIR')
+    sectionTitle('D', 'Cohérence CIR · Points de vigilance · Grille de contrôle')
 
     const alertesOpen = alerts.filter(a => a.status === 'open')
     const alertesResolved = alerts.filter(a => a.status === 'resolved')
     const reglesActives = rules.filter(r => r.active)
+    const reglesOkPDF = reglesActives.filter(r => !alertesOpen.find(a => (a.regle || a.rule) === r.label))
 
-    // Résumé
-    checkPage(10)
-    doc.setFillColor(...lightBg); doc.roundedRect(margin, y, cw, 10, 2, 2, 'F')
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30, 40, 55)
-    doc.text(`${reglesActives.length} règles actives  ·  ${alertesOpen.length} anomalie(s) détectée(s)  ·  ${alertesResolved.length} résolu(e)(s)  ·  Score moyen : ${reportData.stats.scoreGlobal}%`, margin + 4, y + 6.5)
-    y += 14
+    // Synthèse narrative
+    checkPage(18)
+    const nbAnomaliesPDF = alertesOpen.length
+    const nbCritiquesP = alertesOpen.filter(a => a.severity === 'high').length
+    let coherenceNarr = ''
+    if (nbAnomaliesPDF === 0 && reportData.stats.nbCas3 === 0)
+      coherenceNarr = `Les ${reglesActives.length} règle(s) CIR actives ont été vérifiées et aucune anomalie n'a été détectée. Le dossier est cohérent sur l'ensemble des critères contrôlés.`
+    else if (nbAnomaliesPDF === 0)
+      coherenceNarr = `Aucune anomalie détectée sur les documents exploitables. ${reportData.stats.nbCas3} fichier(s) non lisible(s) empêche(nt) une vérification complète de certaines règles.`
+    else {
+      coherenceNarr = `Sur ${reglesActives.length} règle(s) vérifiées, ${reglesOkPDF.length} sont cohérentes et ${nbAnomaliesPDF} présentent des points d'attention`
+      if (nbCritiquesP > 0) coherenceNarr += ` dont ${nbCritiquesP} critique(s)`
+      coherenceNarr += '.'
+      if (reportData.stats.nbCas3 > 0)
+        coherenceNarr += ` De plus, ${reportData.stats.nbCas3} fichier(s) non lisible(s) limite(nt) la portée de cette analyse.`
+    }
+    doc.setFillColor(...lightBg); doc.roundedRect(margin, y, cw, 14, 2, 2, 'F')
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30, 40, 55)
+    const coherLines = doc.splitTextToSize(coherenceNarr, cw - 6)
+    doc.text(coherLines, margin + 3, y + 5)
+    y += Math.max(14, coherLines.length * 5 + 4)
+    y += 4
 
-    if (alertesOpen.length > 0 || alertesResolved.length > 0) {
-      tableHeader([
-        { label: '#', x: 0 },
-        { label: 'Règle', x: 10 },
-        { label: 'Constat', x: 55 },
-        { label: 'Gravité', x: 125 },
-        { label: 'Sources', x: 148 },
-      ])
-      alerts.map((a, i) => ({ id: `COH-${String(i+1).padStart(2,'0')}`, ...a })).forEach((a, idx) => {
+    // Points de vigilance (anomalies)
+    if (alertesOpen.length > 0) {
+      checkPage(10)
+      doc.setFillColor(255, 240, 240); doc.roundedRect(margin, y, cw, 7, 1, 1, 'F')
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...red)
+      doc.text('Points de vigilance', margin + 3, y + 4.5); y += 9
+      alerts.filter(a => a.status === 'open').map((a, i) => ({ id: `COH-${String(i+1).padStart(2,'0')}`, ...a })).forEach(a => {
         const rowH = 14
         checkPage(rowH + 2)
-        const aColor = a.status === 'resolved' ? green : a.severity === 'high' ? red : yellow
-        if (idx % 2 === 0) { doc.setFillColor(249, 251, 253); doc.rect(margin, y - 1, cw, rowH, 'F') }
-        doc.setFillColor(...aColor); doc.rect(margin, y - 1, 2, rowH, 'F')
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(60, 70, 85)
-        doc.text(a.id, margin + 2, y + 4)
-        doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 55)
-        const ruleLabel = (a.regle || a.rule || '').slice(0, 24)
-        doc.text(ruleLabel, margin + 12, y + 4)
-        const descLines = doc.splitTextToSize(a.description || '', 68)
-        doc.text(descLines[0], margin + 57, y + 4)
-        if (descLines[1]) doc.text(descLines[1], margin + 57, y + 9)
-        const badge = a.status === 'resolved' ? 'Résolu' : a.severity === 'high' ? 'Critique' : 'Moyen'
-        doc.setTextColor(...aColor); doc.setFont('helvetica', 'bold')
-        doc.text(badge, margin + 127, y + 4)
-        doc.setFont('helvetica', 'normal'); doc.setTextColor(...gray); doc.setFontSize(6.5)
-        doc.text((a.sources || []).join(', ').slice(0, 28), margin + 150, y + 4)
-        y += rowH
+        const aColor = a.severity === 'high' ? red : yellow
+        doc.setFillColor(249, 251, 253); doc.roundedRect(margin, y, cw, rowH, 1, 1, 'F')
+        doc.setFillColor(...aColor); doc.rect(margin, y, 2, rowH, 'F')
+        const badge = a.severity === 'high' ? 'Critique' : 'Moyen'
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...aColor)
+        doc.text(badge, margin + 5, y + 5)
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 40, 55)
+        doc.text((a.regle || a.rule || '').slice(0, 30), margin + 25, y + 5)
+        const descLines = doc.splitTextToSize(a.description || '', cw - 10)
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(50, 60, 75)
+        doc.text(descLines[0] || '', margin + 5, y + 10)
+        if (descLines[1]) doc.text(descLines[1], margin + 5, y + 14)
+        if (a.sources?.length) {
+          doc.setTextColor(...gray); doc.setFontSize(6.5)
+          doc.text('Sources : ' + a.sources.join(', ').slice(0, 60), margin + cw - 2, y + 5, { align: 'right' })
+        }
+        y += rowH + 2
       })
-      y += 4
-    } else {
-      doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...gray)
-      doc.text('Aucune anomalie détectée sur les règles CIR actives.', margin, y); y += 8
+      y += 3
     }
 
-    // Règles non vérifiables
+    // Règles cohérentes (résumé compact)
+    if (reglesOkPDF.length > 0) {
+      checkPage(10)
+      doc.setFillColor(240, 252, 244); doc.roundedRect(margin, y, cw, 7, 1, 1, 'F')
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...green)
+      doc.text(`Règles cohérentes (${reglesOkPDF.length}) : `, margin + 3, y + 4.5)
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(50, 70, 55)
+      const okTxt = reglesOkPDF.map(r => r.label).join(' · ')
+      const okLines = doc.splitTextToSize(okTxt, cw - 50)
+      doc.text(okLines[0] || '', margin + 48, y + 4.5)
+      y += 7 + (okLines.length > 1 ? (okLines.length - 1) * 4 : 0)
+      y += 3
+    }
+
+    // Avertissement Cas 3
     if (reportData.stats.nbCas3 > 0) {
       checkPage(10)
       doc.setFillColor(255, 248, 230); doc.roundedRect(margin, y, cw, 10, 2, 2, 'F')
@@ -799,14 +799,27 @@ function DossierView({ navigate, client, onBack }) {
     }
 
     // ══════════════════════════════════════════════
-    // E. COHÉRENCE AVEC LES DÉCLARATIONS COPILOT (conditionnelle)
+    // E. DÉCLARATIONS COPILOT (conditionnelle — uniquement si fiche renseignée)
     // ══════════════════════════════════════════════
     if (ficheContexte) {
       checkPage(14)
-      sectionTitle('E', 'Cohérence avec les déclarations Copilot')
+      sectionTitle('E', 'Déclarations Copilot')
 
       const ficheEntries = Object.entries(ficheContexte).filter(([k]) => k !== '_confirmedAt')
 
+      // Synthèse narrative
+      const projetDecl = ficheContexte.Projet || ficheContexte.projet || 'non précisé'
+      const periodeDecl = ficheContexte.Période || ficheContexte.periode || 'non précisée'
+      const copilotNarr = `Le client a complété le copilote le ${ficheContexte._confirmedAt || '—'} en déclarant un projet « ${projetDecl} » sur la période ${periodeDecl}. Vérification de cohérence indicative — validation manuelle recommandée.`
+      checkPage(16)
+      doc.setFillColor(...lightBg); doc.roundedRect(margin, y, cw, 14, 2, 2, 'F')
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30, 40, 55)
+      const copLines = doc.splitTextToSize(copilotNarr, cw - 6)
+      doc.text(copLines, margin + 3, y + 5)
+      y += Math.max(14, copLines.length * 5 + 4)
+      y += 4
+
+      // Tableau des champs déclarés
       checkPage(8 + ficheEntries.length * 6)
       tableHeader([
         { label: 'Champ déclaré', x: 0 },
@@ -823,51 +836,39 @@ function DossierView({ navigate, client, onBack }) {
         doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 40, 55)
         const val = String(v).length > 35 ? String(v).slice(0, 34) + '…' : String(v)
         doc.text(val, margin + 57, y + 4)
-
-        // Vérification basique de cohérence entre déclaration et documents
         let coherence = '—'
         let cohColor  = gray
-        const vLower = String(v).toLowerCase()
         const kLower = k.toLowerCase()
-
+        const vLower = String(v).toLowerCase()
         if (kLower.includes('projet') || kLower.includes('nom')) {
-          const hasProjet = reportData.docsExploitables.some(d =>
-            d.type === 'Fiche projet' || (d.fields_summary || '').toLowerCase().includes(vLower.slice(0, 10))
-          )
-          coherence = hasProjet ? 'Fiche projet présente' : 'Fiche projet absente'
-          cohColor = hasProjet ? green : yellow
+          const ok = reportData.docsExploitables.some(d => d.type === 'Fiche projet' || (d.fields_summary || '').toLowerCase().includes(vLower.slice(0, 10)))
+          coherence = ok ? 'Fiche projet présente' : 'Fiche projet absente'
+          cohColor = ok ? green : yellow
         } else if (kLower.includes('période') || kLower.includes('date')) {
-          coherence = 'Vérifier dates documents'
-          cohColor  = yellow
+          coherence = 'Vérifier dates documents'; cohColor = yellow
         } else if (kLower.includes('équipe') || kLower.includes('salarié')) {
-          const hasPersonnel = reportData.docsExploitables.some(d => d.type === 'Fiche personnel' || d.type === 'Relevé de temps')
-          coherence = hasPersonnel ? 'Personnel documenté' : 'Pièces personnel manquantes'
-          cohColor  = hasPersonnel ? green : yellow
+          const ok = reportData.docsExploitables.some(d => d.type === 'Fiche personnel' || d.type === 'Relevé de temps')
+          coherence = ok ? 'Personnel documenté' : 'Pièces personnel manquantes'
+          cohColor = ok ? green : yellow
         } else if (kLower.includes('prestataire')) {
-          const hasContrat = reportData.docsExploitables.some(d => d.type === 'Contrat' || d.type === 'Facture')
-          coherence = hasContrat ? 'Contrat/facture présent' : 'Pas de contrat/facture'
-          cohColor  = hasContrat ? green : yellow
+          const ok = reportData.docsExploitables.some(d => d.type === 'Contrat' || d.type === 'Facture')
+          coherence = ok ? 'Contrat/facture présent' : 'Pas de contrat/facture'
+          cohColor = ok ? green : yellow
         } else {
-          coherence = 'Vérification manuelle'
-          cohColor  = gray
+          coherence = 'Vérification manuelle'; cohColor = gray
         }
-
         doc.setTextColor(...cohColor); doc.setFont('helvetica', 'bold'); doc.setFontSize(7)
         doc.text(coherence, margin + 117, y + 4)
         y += rowH
       })
-
-      doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(...gray)
-      y += 3
-      checkPage(6)
-      doc.text(`Fiche confirmée le ${ficheContexte._confirmedAt || '—'}  ·  Vérification de cohérence indicative — validation manuelle recommandée.`, margin, y); y += 8
+      y += 5
     }
 
-    // ══════════════════════════════════════════════
-    // F. GRILLE DE CONTRÔLE
-    // ══════════════════════════════════════════════
+    // ── Grille de contrôle (intégrée dans la section D) ──
     checkPage(14)
-    sectionTitle('F', 'Grille de contrôle')
+    doc.setFillColor(20, 35, 55); doc.rect(margin, y, cw, 7, 'F')
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...blue)
+    doc.text('Grille de contrôle', margin + 3, y + 4.5); y += 9
 
     tableHeader([
       { label: 'Règle CIR', x: 0 },
@@ -892,11 +893,11 @@ function DossierView({ navigate, client, onBack }) {
     })
     y += 6
 
-    // ── Pièces manquantes & Impact financier (compact, bas de grille) ──
+    // ── Pièces manquantes ──
     if (reportData.piecesManquantes.length > 0) {
       checkPage(10 + reportData.piecesManquantes.length * 5)
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...yellow)
-      doc.text('Pièces non fournies (types requis pour un dossier CIR complet) :', margin, y); y += 5
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...yellow)
+      doc.text('Pièces manquantes (types requis pour un dossier CIR complet) :', margin, y); y += 5
       reportData.piecesManquantes.forEach(p => {
         checkPage(5)
         doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(80, 70, 30)
@@ -905,6 +906,7 @@ function DossierView({ navigate, client, onBack }) {
       y += 3
     }
 
+    // ── Impact financier ──
     if (reportData.financier.assietteCIR || reportData.financier.cirEstime) {
       checkPage(22)
       doc.setFillColor(...lightBg); doc.roundedRect(margin, y, cw, 20, 2, 2, 'F')
@@ -1514,84 +1516,58 @@ function DossierView({ navigate, client, onBack }) {
                 ))}
               </div>
 
-              <div className="px-6 pb-6 pt-5 space-y-6">
+              <div className="px-6 pb-6 pt-5 space-y-8">
 
-                {/* ══ A — BILAN DES DÉPÔTS ══ */}
+                {/* ══ A — BILAN DES DÉPÔTS (Cas 1 / 2 / 3) ══ */}
                 <section>
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-4">
                     <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">A</span>
                     <h3 className="text-white font-semibold text-sm">Bilan des dépôts</h3>
                   </div>
-                  <div className="rounded-xl overflow-hidden border border-white/10">
-                    {/* En-tête tableau */}
-                    <div className="grid grid-cols-[90px_1fr_auto] bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white/30">
-                      <span>Cas</span><span>Description</span><span className="text-right pr-2">Nb</span>
-                    </div>
-                    {/* Cas 1 */}
-                    <div className="grid grid-cols-[90px_1fr_auto] border-t border-white/5 px-4 py-3 items-start gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-green-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-400" />Cas 1
-                      </span>
-                      <div>
-                        <p className="text-white/80 text-sm font-medium">Extraction réussie — type reconnu</p>
-                        <p className="text-white/40 text-xs mt-0.5">Inclus dans l'analyse automatique.</p>
-                        {cas1Docs.length > 0 && (
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {cas1Docs.map((d, i) => (
-                              <span key={i} className="text-xs bg-green-500/10 border border-green-500/15 text-green-300 rounded px-2 py-0.5">{d.name}</span>
-                            ))}
+                  {/* Synthèse rédigée */}
+                  <div className="bg-white/4 border border-white/10 rounded-xl px-5 py-4 space-y-3">
+                    <p className="text-white/70 text-sm leading-relaxed">
+                      {documents.length === 0
+                        ? 'Aucun document déposé dans ce dossier.'
+                        : (() => {
+                          const parts = []
+                          if (cas1Docs.length > 0)
+                            parts.push(`${cas1Docs.length} document${cas1Docs.length > 1 ? 's' : ''} ont été analysés avec succès et leur type a été reconnu automatiquement (Cas 1)`)
+                          if (cas2Docs.length > 0)
+                            parts.push(`${cas2Docs.length} document${cas2Docs.length > 1 ? 's' : ''} ont été traités mais leur type n'a pas pu être identifié — une classification manuelle est recommandée (Cas 2)`)
+                          if (cas3Docs.length > 0)
+                            parts.push(`${cas3Docs.length} fichier${cas3Docs.length > 1 ? 's' : ''} sont illisibles ou leur extraction a échoué et ne peuvent pas être inclus dans l'analyse automatique — une action du client est nécessaire (Cas 3)`)
+                          if (parts.length === 0) return `${documents.length} document(s) déposé(s), aucun analysé.`
+                          return `Sur les ${documents.length} pièce${documents.length > 1 ? 's' : ''} déposée${documents.length > 1 ? 's' : ''} dans ce dossier, ${parts.join(' ; ')}.`
+                        })()
+                      }
+                    </p>
+                    {/* Lignes colorées par cas */}
+                    <div className="space-y-2 pt-1">
+                      {[
+                        { cas: 'Cas 1', docs: cas1Docs, color: 'text-green-400', border: 'border-green-500/20', bg: 'bg-green-500/5', desc: 'Extraction réussie, type reconnu' },
+                        { cas: 'Cas 2', docs: cas2Docs, color: 'text-yellow-400', border: 'border-yellow-500/20', bg: 'bg-yellow-500/5', desc: 'Extraction réussie, type non reconnu' },
+                        { cas: 'Cas 3', docs: cas3Docs, color: 'text-red-400', border: 'border-red-500/20', bg: 'bg-red-500/5', desc: 'Non lisible ou extraction échouée' },
+                      ].filter(r => r.docs.length > 0).map(r => (
+                        <div key={r.cas} className={`flex items-start gap-3 rounded-lg border ${r.border} ${r.bg} px-4 py-2.5`}>
+                          <span className={`text-xs font-bold shrink-0 mt-0.5 w-10 ${r.color}`}>{r.cas}</span>
+                          <div className="flex-1 min-w-0">
+                            <span className={`text-xs font-semibold ${r.color}`}>{r.desc}</span>
+                            <span className="text-white/35 text-xs ml-2">— {r.docs.map(d => d.name).join(', ')}</span>
                           </div>
-                        )}
-                      </div>
-                      <span className="text-green-400 font-bold text-lg pr-2 text-right">{cas1Docs.length}</span>
-                    </div>
-                    {/* Cas 2 */}
-                    <div className="grid grid-cols-[90px_1fr_auto] border-t border-white/5 px-4 py-3 items-start gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-yellow-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />Cas 2
-                      </span>
-                      <div>
-                        <p className="text-white/80 text-sm font-medium">Extraction réussie — type non reconnu</p>
-                        <p className="text-white/40 text-xs mt-0.5">Inclus dans l'analyse — le type doit être vérifié manuellement.</p>
-                        {cas2Docs.length > 0 && (
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {cas2Docs.map((d, i) => (
-                              <span key={i} className="text-xs bg-yellow-500/10 border border-yellow-500/15 text-yellow-300 rounded px-2 py-0.5">{d.name}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <span className="text-yellow-400 font-bold text-lg pr-2 text-right">{cas2Docs.length}</span>
-                    </div>
-                    {/* Cas 3 */}
-                    <div className="grid grid-cols-[90px_1fr_auto] border-t border-white/5 px-4 py-3 items-start gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-400" />Cas 3
-                      </span>
-                      <div>
-                        <p className="text-white/80 text-sm font-medium">Extraction échouée / non lisible</p>
-                        <p className="text-white/40 text-xs mt-0.5">Exclus de l'analyse automatique — action client requise.</p>
-                        {cas3Docs.length > 0 && (
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {cas3Docs.map((d, i) => (
-                              <span key={i} className="text-xs bg-red-500/10 border border-red-500/15 text-red-300 rounded px-2 py-0.5">
-                                {d.name}{d.manualReview ? ' (image/scan)' : ' (extraction échouée)'}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <span className="text-red-400 font-bold text-lg pr-2 text-right">{cas3Docs.length}</span>
+                          <span className={`text-sm font-bold shrink-0 ${r.color}`}>{r.docs.length}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </section>
 
-                {/* ══ B — INFORMATIONS EXTRAITES ══ */}
+                {/* ══ B — SYNTHÈSE DES INFORMATIONS EXTRAITES (Cas 1 & 2) ══ */}
                 <section>
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-4">
                     <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">B</span>
-                    <h3 className="text-white font-semibold text-sm">Informations extraites par document</h3>
-                    <span className="text-white/30 text-xs">(Cas 1 et Cas 2 uniquement)</span>
+                    <h3 className="text-white font-semibold text-sm">Synthèse des informations extraites</h3>
+                    <span className="text-white/30 text-xs">(Cas 1 & 2)</span>
                   </div>
                   {exploitables.length === 0 ? (
                     <p className="text-white/30 text-sm italic px-1">Aucun document exploitable dans ce dossier.</p>
@@ -1602,12 +1578,20 @@ function DossierView({ navigate, client, onBack }) {
                         const entites = d.entites
                           ? Object.entries(d.entites).filter(([, v]) => v !== null && v !== undefined && v !== '' && String(v).trim() !== '')
                           : []
+                        // Construire une phrase de synthèse à partir des entités
+                        const buildSynthese = () => {
+                          if (d.fields_summary && d.fields_summary !== '—') return d.fields_summary
+                          if (d.fields && d.fields !== '—') return d.fields
+                          if (entites.length === 0) return null
+                          const kv = entites.map(([k, v]) => `${k.replace(/_/g, ' ')} : ${v}`).join(' · ')
+                          return kv
+                        }
+                        const synthese = buildSynthese()
                         return (
                           <div key={i} className={`rounded-xl border overflow-hidden ${isCas2 ? 'border-yellow-500/20' : 'border-white/10'}`}>
-                            {/* En-tête document */}
                             <div className={`flex items-center justify-between px-4 py-2.5 ${isCas2 ? 'bg-yellow-500/8' : 'bg-white/5'}`}>
                               <div className="flex items-center gap-2 min-w-0">
-                                <FileText size={13} className={isCas2 ? 'text-yellow-400 shrink-0' : 'text-green-400 shrink-0'} />
+                                <FileText size={13} className={`${isCas2 ? 'text-yellow-400' : 'text-green-400'} shrink-0`} />
                                 <span className="text-white font-semibold text-sm truncate">{d.name}</span>
                               </div>
                               <div className="flex items-center gap-2 shrink-0 ml-3">
@@ -1621,22 +1605,11 @@ function DossierView({ navigate, client, onBack }) {
                                 </span>
                               </div>
                             </div>
-                            {/* Corps */}
-                            <div className="px-4 py-3 space-y-2">
-                              {(d.fields_summary || d.fields) && (
-                                <p className="text-white/55 text-xs leading-relaxed italic">{d.fields_summary || d.fields}</p>
-                              )}
-                              {entites.length > 0 ? (
-                                <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-                                  {entites.map(([k, v]) => (
-                                    <div key={k} className="flex gap-1.5 text-xs">
-                                      <span className="text-white/30 shrink-0 capitalize">{k.replace(/_/g, ' ')} :</span>
-                                      <span className="text-white/70 font-medium truncate">{String(v)}</span>
-                                    </div>
-                                  ))}
-                                </div>
+                            <div className="px-4 py-3 space-y-1.5">
+                              {synthese ? (
+                                <p className="text-white/65 text-sm leading-relaxed">{synthese}</p>
                               ) : (
-                                <p className="text-white/25 text-xs italic">Aucune entité structurée extraite.</p>
+                                <p className="text-white/25 text-xs italic">Aucune information structurée extraite.</p>
                               )}
                               {d.anomalie && (
                                 <div className="flex items-start gap-2 bg-yellow-500/8 border border-yellow-500/20 rounded-lg px-3 py-2 mt-1">
@@ -1654,7 +1627,7 @@ function DossierView({ navigate, client, onBack }) {
 
                 {/* ══ C — CARTE DES PREUVES RELIÉES ══ */}
                 <section>
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-4">
                     <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">C</span>
                     <h3 className="text-white font-semibold text-sm">Carte des preuves reliées</h3>
                   </div>
@@ -1662,113 +1635,105 @@ function DossierView({ navigate, client, onBack }) {
                     <p className="text-white/30 text-sm italic px-1">Lancez la vérification de cohérence pour établir la carte des preuves.</p>
                   ) : (
                     <div className="space-y-3">
-                      {/* Explication du projet central */}
-                      <div className="bg-[#00b4d8]/5 border border-[#00b4d8]/15 rounded-xl px-4 py-3">
-                        <p className="text-white/60 text-sm leading-relaxed">
-                          Tous les documents exploitables (Cas 1 et Cas 2) sont rattachés au projet central
-                          {ficheContexte?.Projet || ficheContexte?.projet ? ` « ${ficheContexte.Projet || ficheContexte.projet} »` : ''}.
-                          {cas3Docs.length > 0 && ` Les ${cas3Docs.length} fichier(s) non lisibles (Cas 3) sont exclus de cette carte.`}
+                      {/* Synthèse narrative du réseau */}
+                      <div className="bg-[#00b4d8]/5 border border-[#00b4d8]/15 rounded-xl px-5 py-4">
+                        <p className="text-white/65 text-sm leading-relaxed">
+                          {(() => {
+                            const nbNoeuds = jumeau.noeuds.filter(n => n.type !== 'projet').length
+                            const nbLiens  = jumeau.liens?.filter(l => l.lateral && l.label).length ?? 0
+                            const projetLabel = ficheContexte?.Projet || ficheContexte?.projet || 'le projet central'
+                            const categs = Object.keys(liensParCategorie)
+                            let txt = `Le dossier regroupe ${nbNoeuds} pièce${nbNoeuds > 1 ? 's' : ''} rattachée${nbNoeuds > 1 ? 's' : ''} à « ${projetLabel} ».`
+                            if (nbLiens > 0) {
+                              txt += ` Ces documents entretiennent ${nbLiens} relation${nbLiens > 1 ? 's' : ''} transversale${nbLiens > 1 ? 's' : ''}`
+                              if (categs.length > 0) txt += ` couvrant les dimensions ${categs.join(', ')}`
+                              txt += '.'
+                            } else {
+                              txt += ' Aucun lien transversal n\'a encore été détecté — lancez la vérification de cohérence pour compléter l\'analyse.'
+                            }
+                            if (cas3Docs.length > 0)
+                              txt += ` Les ${cas3Docs.length} fichier${cas3Docs.length > 1 ? 's' : ''} non lisible${cas3Docs.length > 1 ? 's' : ''} (Cas 3) sont exclus de cette carte et ne peuvent pas être reliés automatiquement.`
+                            return txt
+                          })()}
                         </p>
                       </div>
 
-                      {/* Nœuds rattachés */}
-                      <div>
-                        <p className="text-white/30 text-xs uppercase tracking-wide font-medium mb-2">Documents rattachés au projet central</p>
-                        <div className="flex flex-wrap gap-2">
-                          {jumeau.noeuds.filter(n => n.type !== 'projet').map((n, i) => (
-                            <div key={i} className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#00b4d8]" />
-                              <span className="text-white/70 text-xs font-medium">{n.label}</span>
-                              {n.type && <span className="text-white/25 text-[10px]">({n.type})</span>}
+                      {/* Relations transversales par catégorie (rédigées) */}
+                      {Object.keys(liensParCategorie).length > 0 && (
+                        <div className="space-y-2">
+                          {Object.entries(liensParCategorie).map(([cat, liens]) => (
+                            <div key={cat} className="bg-white/3 border border-white/8 rounded-xl px-4 py-3">
+                              <p className="text-[#00b4d8] text-xs font-semibold uppercase tracking-wide mb-2">{cat}</p>
+                              <p className="text-white/55 text-sm leading-relaxed">
+                                {liens.map((l, i) => (
+                                  <span key={i}>
+                                    {i > 0 && ' · '}
+                                    <span className="text-white/75 font-medium">{l.from}</span>
+                                    <span className="text-[#00b4d8]"> → </span>
+                                    <span className="text-white/75 font-medium">{l.to}</span>
+                                    <span className="text-white/35"> ({l.label})</span>
+                                  </span>
+                                ))}
+                              </p>
                             </div>
                           ))}
-                        </div>
-                      </div>
-
-                      {/* Relations transversales par catégorie */}
-                      {Object.keys(liensParCategorie).length > 0 && (
-                        <div>
-                          <p className="text-white/30 text-xs uppercase tracking-wide font-medium mb-2">Liens transversaux entre documents</p>
-                          <div className="space-y-2">
-                            {Object.entries(liensParCategorie).map(([cat, liens]) => (
-                              <div key={cat} className="bg-white/3 border border-white/8 rounded-xl px-4 py-3">
-                                <p className="text-[#00b4d8] text-xs font-semibold uppercase tracking-wide mb-2">{cat}</p>
-                                {liens.map((l, i) => (
-                                  <div key={i} className="flex items-center gap-2 text-xs text-white/55 mb-1 last:mb-0">
-                                    <span className="font-medium text-white/70">{l.from}</span>
-                                    <span className="text-[#00b4d8]">→</span>
-                                    <span className="font-medium text-white/70">{l.to}</span>
-                                    <span className="text-white/25 ml-1">({l.label})</span>
-                                  </div>
-                                ))}
-                              </div>
-                            ))}
-                          </div>
                         </div>
                       )}
                     </div>
                   )}
                 </section>
 
-                {/* ══ D — COHÉRENCE CIR ══ */}
+                {/* ══ D — COHÉRENCE CIR / POINTS DE VIGILANCE / GRILLE DE CONTRÔLE ══ */}
                 <section>
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-4">
                     <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">D</span>
-                    <h3 className="text-white font-semibold text-sm">Cohérence avec les règles CIR</h3>
+                    <h3 className="text-white font-semibold text-sm">Cohérence CIR · Points de vigilance · Grille de contrôle</h3>
                   </div>
                   {alerts.length === 0 && cas3Docs.length === 0 && documents.length === 0 ? (
                     <p className="text-white/30 text-sm italic px-1">Lancez la vérification depuis l'onglet Documents pour voir les résultats.</p>
                   ) : (
-                    <div className="space-y-2">
-                      {/* Résumé barre */}
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          { label: 'Règles vérifiées', value: reglesVerifiees.length, color: 'text-green-400', bg: 'bg-green-500/8 border-green-500/15' },
-                          { label: 'Anomalies', value: reglesAnomalies.length, color: 'text-red-400', bg: 'bg-red-500/8 border-red-500/15' },
-                          { label: 'Non vérifiables', value: cas3Docs.length > 0 ? '?' : '0', color: cas3Docs.length > 0 ? 'text-orange-400' : 'text-white/40', bg: cas3Docs.length > 0 ? 'bg-orange-500/8 border-orange-500/15' : 'bg-white/5 border-white/10' },
-                        ].map(s => (
-                          <div key={s.label} className={`rounded-xl px-3 py-2.5 text-center border ${s.bg}`}>
-                            <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
-                            <p className="text-white/35 text-xs mt-0.5">{s.label}</p>
-                          </div>
-                        ))}
+                    <div className="space-y-4">
+                      {/* Synthèse narrative des résultats */}
+                      <div className="bg-white/4 border border-white/10 rounded-xl px-5 py-4">
+                        <p className="text-white/65 text-sm leading-relaxed">
+                          {(() => {
+                            const nbRegles = rules.filter(r => r.active).length
+                            const nbOk = reglesVerifiees.length
+                            const nbAno = reglesAnomalies.length
+                            if (nbAno === 0 && cas3Docs.length === 0)
+                              return `Les ${nbRegles} règle${nbRegles > 1 ? 's' : ''} CIR actives ont été vérifiées et aucune anomalie n'a été détectée. Le dossier est cohérent sur l'ensemble des critères contrôlés.`
+                            if (nbAno === 0 && cas3Docs.length > 0)
+                              return `Aucune anomalie détectée sur les documents exploitables. ${cas3Docs.length} fichier${cas3Docs.length > 1 ? 's' : ''} non lisible${cas3Docs.length > 1 ? 's' : ''} (Cas 3) empêche${cas3Docs.length > 1 ? 'nt' : ''} une vérification complète de certaines règles — une action du client est requise.`
+                            const critiques = reglesAnomalies.filter(a => a.severity === 'high').length
+                            const moyens = reglesAnomalies.filter(a => a.severity !== 'high').length
+                            let msg = `Sur ${nbRegles} règle${nbRegles > 1 ? 's' : ''} vérifiées, ${nbOk} sont cohérentes et ${nbAno} présentent des points d'attention`
+                            if (critiques > 0) msg += ` dont ${critiques} critique${critiques > 1 ? 's' : ''}`
+                            if (moyens > 0) msg += ` et ${moyens} de gravité moyenne`
+                            msg += '.'
+                            if (cas3Docs.length > 0)
+                              msg += ` De plus, ${cas3Docs.length} fichier${cas3Docs.length > 1 ? 's' : ''} non lisible${cas3Docs.length > 1 ? 's' : ''} limite${cas3Docs.length > 1 ? 'nt' : ''} la portée de cette analyse.`
+                            return msg
+                          })()}
+                        </p>
                       </div>
 
-                      {/* Règles OK */}
-                      {reglesVerifiees.length > 0 && (
-                        <div className="rounded-xl border border-green-500/10 overflow-hidden">
-                          <div className="bg-green-500/5 px-4 py-2 flex items-center gap-2">
-                            <CheckCircle size={12} className="text-green-400" />
-                            <span className="text-green-400 text-xs font-semibold uppercase tracking-wide">Règles vérifiées / cohérentes</span>
-                          </div>
-                          <div className="divide-y divide-white/5">
-                            {reglesVerifiees.map(r => (
-                              <div key={r.id} className="flex items-center gap-2 px-4 py-2">
-                                <span className="text-green-400 text-xs">✓</span>
-                                <span className="text-white/60 text-sm">{r.label}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Anomalies */}
+                      {/* Points de vigilance (anomalies détectées) */}
                       {reglesAnomalies.length > 0 && (
                         <div className="rounded-xl border border-red-500/15 overflow-hidden">
-                          <div className="bg-red-500/8 px-4 py-2 flex items-center gap-2">
+                          <div className="bg-red-500/8 px-4 py-2.5 flex items-center gap-2">
                             <AlertTriangle size={12} className="text-red-400" />
-                            <span className="text-red-400 text-xs font-semibold uppercase tracking-wide">Anomalies / alertes</span>
+                            <span className="text-red-400 text-xs font-semibold uppercase tracking-wide">Points de vigilance</span>
                           </div>
-                          <div className="divide-y divide-white/5">
+                          <div className="divide-y divide-white/5 px-4">
                             {reglesAnomalies.map((a, i) => (
-                              <div key={i} className="px-4 py-3">
-                                <div className="flex items-center gap-2 mb-0.5">
+                              <div key={i} className="py-3">
+                                <div className="flex items-center gap-2 mb-1">
                                   <span className={`text-xs font-bold ${a.severity === 'high' ? 'text-red-400' : 'text-yellow-400'}`}>
                                     {a.severity === 'high' ? '✕ Critique' : '⚠ Moyen'}
                                   </span>
                                   <span className="text-white/70 text-sm font-medium">{a.regle || a.rule}</span>
                                 </div>
-                                <p className="text-white/45 text-xs leading-relaxed">{a.description}</p>
+                                <p className="text-white/55 text-sm leading-relaxed">{a.description}</p>
                                 {a.sources?.length > 0 && (
                                   <p className="text-white/25 text-xs mt-1">Sources : {a.sources.join(', ')}</p>
                                 )}
@@ -1778,12 +1743,27 @@ function DossierView({ navigate, client, onBack }) {
                         </div>
                       )}
 
-                      {/* Non vérifiables (Cas 3) */}
+                      {/* Règles cohérentes (résumé) */}
+                      {reglesVerifiees.length > 0 && (
+                        <div className="rounded-xl border border-green-500/10 overflow-hidden">
+                          <div className="bg-green-500/5 px-4 py-2.5 flex items-center gap-2">
+                            <CheckCircle size={12} className="text-green-400" />
+                            <span className="text-green-400 text-xs font-semibold uppercase tracking-wide">Règles cohérentes ({reglesVerifiees.length})</span>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p className="text-white/50 text-sm leading-relaxed">
+                              {reglesVerifiees.map(r => r.label).join(' · ')}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Avertissement Cas 3 */}
                       {cas3Docs.length > 0 && (
                         <div className="bg-orange-500/5 border border-orange-500/15 rounded-xl px-4 py-3 flex items-start gap-2">
                           <AlertTriangle size={13} className="text-orange-400 shrink-0 mt-0.5" />
-                          <p className="text-orange-400/80 text-xs leading-relaxed">
-                            {cas3Docs.length} fichier(s) non lisible(s) exclu(s) — certaines règles CIR ne peuvent pas être vérifiées complètement tant que ces documents ne sont pas fournis en version lisible.
+                          <p className="text-orange-400/80 text-sm leading-relaxed">
+                            {cas3Docs.length} fichier{cas3Docs.length > 1 ? 's' : ''} non lisible{cas3Docs.length > 1 ? 's' : ''} exclu{cas3Docs.length > 1 ? 's' : ''} ({cas3Docs.map(d => d.name).join(', ')}) — certaines règles CIR ne peuvent pas être vérifiées complètement tant que ces documents ne sont pas fournis en version lisible.
                           </p>
                         </div>
                       )}
@@ -1791,7 +1771,7 @@ function DossierView({ navigate, client, onBack }) {
                   )}
                 </section>
 
-                {/* ══ E — COHÉRENCE COPILOT (conditionnelle) ══ */}
+                {/* ══ E — DÉCLARATIONS COPILOT (conditionnelle : uniquement si ficheContexte existe) ══ */}
                 {ficheContexte && (() => {
                   const entries = Object.entries(ficheContexte).filter(([k]) => k !== '_confirmedAt')
                   const checkCoherence = (k, v) => {
@@ -1813,21 +1793,41 @@ function DossierView({ navigate, client, onBack }) {
                     }
                     return { label: '—', ok: null }
                   }
+                  // Synthèse narrative des déclarations
+                  const nbOkDecl = entries.filter(([k, v]) => checkCoherence(k, v).ok === true).length
+                  const nbWarnDecl = entries.filter(([k, v]) => checkCoherence(k, v).ok === false).length
                   return (
                     <section>
-                      <div className="flex items-center gap-2 mb-3">
+                      <div className="flex items-center gap-2 mb-4">
                         <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">E</span>
-                        <h3 className="text-white font-semibold text-sm">Cohérence avec les déclarations Copilot</h3>
-                        <span className="text-white/25 text-xs">Confirmée le {ficheContexte._confirmedAt}</span>
+                        <h3 className="text-white font-semibold text-sm">Déclarations Copilot</h3>
+                        <span className="text-white/25 text-xs">Confirmées le {ficheContexte._confirmedAt}</span>
+                      </div>
+                      {/* Synthèse narrative */}
+                      <div className="bg-[#00b4d8]/5 border border-[#00b4d8]/15 rounded-xl px-5 py-4 mb-3">
+                        <p className="text-white/65 text-sm leading-relaxed">
+                          {(() => {
+                            const projetDecl = ficheContexte.Projet || ficheContexte.projet || 'non précisé'
+                            const periodeDecl = ficheContexte.Période || ficheContexte.periode || 'non précisée'
+                            let msg = `Le client a complété le copilote le ${ficheContexte._confirmedAt || '—'} en déclarant un projet intitulé « ${projetDecl} » sur la période ${periodeDecl}.`
+                            if (nbOkDecl > 0 && nbWarnDecl === 0)
+                              msg += ` Les déclarations sont cohérentes avec les documents déposés.`
+                            else if (nbWarnDecl > 0)
+                              msg += ` ${nbWarnDecl} déclaration${nbWarnDecl > 1 ? 's' : ''} appelle${nbWarnDecl > 1 ? 'nt' : ''} une vérification manuelle — les pièces justificatives correspondantes sont absentes ou incomplètes.`
+                            else
+                              msg += ` La vérification automatique est partielle — une validation manuelle de chaque champ est recommandée.`
+                            return msg
+                          })()}
+                        </p>
                       </div>
                       <div className="rounded-xl border border-white/10 overflow-hidden">
-                        <div className="grid grid-cols-[1fr_1fr_140px] bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white/30">
+                        <div className="grid grid-cols-[1fr_1fr_160px] bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white/30">
                           <span>Champ déclaré</span><span>Valeur</span><span>Cohérence</span>
                         </div>
                         {entries.map(([k, v], i) => {
                           const { label, ok } = checkCoherence(k, v)
                           return (
-                            <div key={k} className={`grid grid-cols-[1fr_1fr_140px] px-4 py-2.5 border-t border-white/5 items-center gap-2 ${i % 2 === 0 ? '' : 'bg-white/[0.015]'}`}>
+                            <div key={k} className={`grid grid-cols-[1fr_1fr_160px] px-4 py-2.5 border-t border-white/5 items-center gap-2 ${i % 2 === 0 ? '' : 'bg-white/[0.015]'}`}>
                               <span className="text-white/50 text-sm capitalize">{k}</span>
                               <span className="text-white/75 text-sm font-medium truncate">{String(v)}</span>
                               <span className={`text-xs font-semibold ${ok === true ? 'text-green-400' : ok === false ? 'text-yellow-400' : 'text-white/30'}`}>
@@ -1845,13 +1845,12 @@ function DossierView({ navigate, client, onBack }) {
               </div>
             </div>
 
-            {/* ── Grille de contrôle ── */}
+            {/* ── Grille de contrôle (intégrée dans la partie D) ── */}
             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-                <div>
-                  <span className="text-white font-semibold">Grille de contrôle</span>
-                  <p className="text-white/40 text-xs mt-0.5">Remplissez votre analyse pour chaque règle — incluse dans le PDF</p>
-                </div>
+              <div className="px-6 py-4 border-b border-white/10 flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-[#00b4d8] flex items-center justify-center text-white text-[10px] font-bold shrink-0">D</span>
+                <span className="text-white font-semibold">Grille de contrôle</span>
+                <span className="text-white/40 text-xs ml-1">— partie D, à remplir par le consultant</span>
               </div>
               <div className="divide-y divide-white/5">
                 {rules.filter(r => r.active).map(r => {
